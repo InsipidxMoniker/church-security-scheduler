@@ -218,3 +218,36 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ============================================
+# Church Security Scheduler
+# ============================================
+
+# Environment variables and secrets
+.env.*
+!.env.example
+!.env.*.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# SQLite runtime databases and WAL files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Application backup files
+backups/
+
+# Playwright browser test artifacts
+playwright-report/
+test-results/
+
+# Windows temporary files
+Thumbs.db
+Desktop.ini
