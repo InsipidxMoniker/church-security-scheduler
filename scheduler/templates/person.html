@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block content %}
+<h1>{{ 'Edit volunteer' if person else 'Add volunteer' }}</h1><p>People may share a name. Each active person needs a distinct public label, such as a last initial.</p>
+<form method="post" action="/staff/volunteers{% if person %}/{{ person.id }}{% endif %}"><input type="hidden" name="csrf" value="{{ csrf }}">{% if person %}<input type="hidden" name="expected_revision" value="{{ person.revision }}">{% endif %}
+<label>Display name<input name="display_name" maxlength="100" value="{{ person.display_name if person else '' }}" required></label>
+<label>Public label (blank uses name)<input name="public_label" maxlength="100" value="{{ person.public_label if person else '' }}"></label>
+<label>Status<select name="active"><option value="true" {% if not person or person.active %}selected{% endif %}>Active</option><option value="false" {% if person and not person.active %}selected{% endif %}>Inactive</option></select></label>
+<label>Positions 1 and 2 qualification<select name="restricted_qualified"><option value="false" {% if not person or not person.restricted_qualified %}selected{% endif %}>Not restricted-qualified</option><option value="true" {% if person and person.restricted_qualified %}selected{% endif %}>Restricted-qualified</option></select></label>
+<button>Save volunteer</button></form>
+{% if person %}<h2>Personal PIN</h2><p>{{ 'PIN provisioned' if person.has_pin else 'No PIN provisioned' }}. Issuing or resetting a PIN revokes existing volunteer sessions.</p>{% if role == 'admin' %}
+<form method="post" action="/staff/volunteers/{{ person.id }}/pin"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_revision" value="{{ person.revision }}">
+<label for="pin-option">PIN option</label><select id="pin-option" name="mode"><option value="random">Generate a random PIN</option><option value="custom">Set a custom PIN</option></select>
+<label>Custom PIN<input type="password" name="custom_pin" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="new-password" aria-describedby="pin-help"></label><p id="pin-help">For a custom PIN, enter 4–12 digits. Leading zeros count. For a random PIN, leave this field blank; its length follows System configuration.</p>
+<button>{{ 'Reset PIN' if person.has_pin else 'Issue PIN' }}</button></form>
+{% if person.has_pin %}<form method="post" action="/staff/volunteers/{{ person.id }}/pin/view"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_revision" value="{{ person.revision }}"><button>View PIN</button></form><p>Only Administrators can view PINs. PINs issued before this option was added need one reset before they can be viewed.</p>{% endif %}
+<form method="post" action="/staff/volunteers/{{ person.id }}/clear-block"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Clear temporary PIN block</button></form>
+{% else %}<p>Only an Administrator can issue, reset or view PINs.</p>{% endif %}{% endif %}
+<a href="/staff/volunteers">Volunteer roster</a>
+{% endblock %}

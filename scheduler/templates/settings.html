@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block content %}
+<h1>System configuration</h1><p>Review every position before confirming. Zones, position numbers and qualifications are fixed.</p>
+<form method="post" action="/staff/settings"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_revision" value="{{ settings.settings_revision }}">
+<label>Church IANA timezone<input name="timezone" value="{{ settings.timezone }}" placeholder="America/Los_Angeles" maxlength="100" required></label><p>Changes apply to newly opened Sundays. Existing dates keep their timezone.</p>
+<label>First service label<input name="service_1_label" value="{{ settings.service_1_label }}" maxlength="100" required></label>
+<label>First service start time (optional)<input name="service_1_time" type="time" value="{{ settings.service_1_time or '' }}"></label>
+<label>Second service label<input name="service_2_label" value="{{ settings.service_2_label }}" maxlength="100" required></label>
+<label>Second service start time (optional)<input name="service_2_time" type="time" value="{{ settings.service_2_time or '' }}"></label>
+<fieldset><legend>Position classifications — both services</legend>{% for p in settings.positions %}
+<label>Position {{ p.number }} · {{ p.zone }} · {{ 'restricted qualification' if p.restricted_required else 'no qualification required' }}<select name="essential_{{ p.number }}"><option value="true" {% if p.essential %}selected{% endif %}>Essential</option><option value="false" {% if not p.essential %}selected{% endif %}>Optional</option></select></label>{% endfor %}</fieldset>
+<label>Classification confirmation<select name="essentiality_confirmed"><option value="false" {% if not settings.essentiality_confirmed %}selected{% endif %}>Unconfirmed</option><option value="true" {% if settings.essentiality_confirmed %}selected{% endif %}>I explicitly confirm all eight classifications</option></select></label>
+<label>Generated PIN length<select name="pin_digits">{% for count in range(4,13) %}<option value="{{ count }}" {% if settings.security_settings.pin_digits == count %}selected{% endif %}>{{ count }} digits</option>{% endfor %}</select></label>
+<p>Longer PINs improve resistance to guessing. Numeric PINs have limited protection if stored hashes or backups are stolen; protect backups and distribute PINs privately.</p>
+<label>Shared link lifespan (days)<input name="link_days" type="number" step="any" min="0.00001" value="{{ settings.security_settings.link_days }}" required></label>
+<button>Save configuration</button></form><a href="/staff">Staff workspace</a>
+{% endblock %}

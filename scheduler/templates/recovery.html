@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<h1>Save your recovery codes</h1><p>These codes are shown once. Save them in a password manager or another private, safe place. Each code works once if you lose your authenticator.</p>
+<ul class="codes">{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ul><a class="button" href="/staff">I saved my codes — continue</a>
+{% endblock %}

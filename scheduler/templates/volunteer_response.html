@@ -1,0 +1,8 @@
+{% extends "volunteer_base.html" %}{% block content %}
+<h1>Your availability · {{ local_date }}</h1><p>{{ public_label }}</p>
+{% if saved %}<aside role="status"><strong>Availability saved for {{ local_date }}:</strong> {{ {'first':service_1_label, 'second':service_2_label, 'both':'Both services', 'neither':'Neither service'}[response.choice] }}.</aside>{% elif response.revision == 0 %}<p>You have not responded yet. Choose an option and submit it.</p>{% else %}<p>Your saved response is selected below. You can change it while collection remains open.</p>{% endif %}
+<form method="post" action="/availability/{{ link_token }}/mine"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_revision" value="{{ response.revision }}">
+<fieldset><legend>When are you available?</legend>{% for value, text in [('first',service_1_label+' only'),('second',service_2_label+' only'),('both','Both services'),('neither','Neither service')] %}<label class="radio"><input type="radio" name="choice" value="{{ value }}" {% if response.choice == value %}checked{% endif %} required>{{ text }}</label>{% endfor %}</fieldset>
+<p>Changing a selection does not save it. Submit to confirm.</p><button>Save availability</button></form>
+<a href="/availability/{{ link_token }}">Verify a different person</a>
+{% endblock %}

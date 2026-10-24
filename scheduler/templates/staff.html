@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block content %}
+<h1>Staff workspace</h1><p>Signed in as <strong>{{ user.username }}</strong> · {{ user.role }}</p>
+{% if not settings.essentiality_confirmed or not settings.timezone or not settings.service_1_label or not settings.service_2_label %}<aside><strong>Setup incomplete.</strong> An Administrator must set timezone and service labels and explicitly confirm all eight position classifications before any future publication.</aside>{% else %}<p>Setup confirmed · {{ settings.timezone }}</p>{% endif %}
+<nav><a href="/staff/volunteers">Volunteer roster</a><a href="/staff/dates">Sunday availability</a>{% if user.role == 'admin' %}<a href="/staff/settings">System configuration</a><a href="/staff/users">Manage staff</a>{% endif %}<a href="/staff/audit">Audit history</a><a href="/staff/health">System health</a></nav>
+<h2>Position configuration</h2><table><thead><tr><th>Position</th><th>Zone</th><th>Qualification</th><th>Classification</th></tr></thead><tbody>
+{% for p in positions %}<tr><td>{{ p.number }}</td><td>{{ p.zone }}</td><td>{{ 'Restricted' if p.restricted_required else 'None' }}</td><td>{{ 'Essential' if p.essential else 'Optional' }}{% if not settings.essentiality_confirmed %} · unconfirmed{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+<form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Sign out</button></form>
+{% endblock %}

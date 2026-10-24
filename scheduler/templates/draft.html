@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block content %}
+<h1>Sunday draft · {{ day.local_date }}</h1>
+<p>{{ day.timezone_snapshot }} · Staff review · Not published</p>
+<nav><a href="/staff/dates/{{ day.id }}">Availability dashboard</a><a href="/staff/dates">Select another Sunday</a></nav>
+{% for version in publications %}<p><a href="/staff/dates/{{ day.id }}/publications/{{ version.id }}">Published version {{ version.publication_number }}{% if version.id == day.current_published_version_id %} · CURRENT{% else %} · SUPERSEDED{% endif %}</a></p>{% endfor %}
+{% macro revisions() %}<input type="hidden" name="csrf" value="{{ csrf }}">{% for field,value in expected.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}{% endmacro %}
+{% if not setup_confirmed %}<aside>Position classifications are not confirmed. An Administrator must confirm setup before future publication.</aside>{% endif %}
+{% if problems %}<aside role="alert"><strong>Validation problems</strong><ul>{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul>Repair one conflict at a time. Each repair must reduce conflicts and introduce none.</aside>{% endif %}
+{% if stale_configuration %}<aside role="alert">Configuration changed. Review the old and new settings before refreshing. The Sunday timezone stays {{ day.timezone_snapshot }}.</aside><details><summary>Configuration changes</summary><p>Draft</p><pre>{{ config|tojson(indent=2) }}</pre><p>Current settings</p><pre>{{ current_config|tojson(indent=2) }}</pre></details><form method="post" action="/staff/dates/{{ day.id }}/draft/refresh">{{ revisions() }}<button>Confirm configuration refresh</button></form>{% endif %}
+{% if (not day.first_published_at or draft) and not stale_configuration %}
+<form method="post" action="/staff/dates/{{ day.id }}/draft/generate">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+{% for field,value in expected.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+<p>Generation uses current affirmative availability and strict zone rotation. Valid locks, including locked vacancies, are preserved. One generation can run at a time with a ten-second total solving budget.</p>
+<button>{{ 'Regenerate draft' if draft else 'Generate draft' }}</button></form>
+{% endif %}
+{% if metadata %}
+<h2>Solver result: {{ metadata.status }}</h2>
+{% if metadata.status == 'OPTIMAL' %}<p><strong>All E/O/B/U objectives proven optimal; Sunday canonicalization complete.</strong> Completed results repeat on the pinned build for identical inputs.</p>
+{% else %}<aside><strong>Coverage not proven maximal for unfinished coverage stages.</strong> Optimization or canonicalization is incomplete. Timeout incumbents may differ between runs.</aside>{% endif %}
+<p>Proven objectives: {{ metadata.completed_stages|join(', ') or 'None' }}. Canonicalization: {{ 'complete' if metadata.canonicalization_complete else 'unfinished' }} ({{ metadata.canonical_slots }}/16 slots).</p>
+<p>Filled essential (E): {{ metadata.objectives.E }} · Filled optional (O): {{ metadata.objectives.O }} · Both services (B): {{ metadata.objectives.B }} · Retained unlocked assignments (U): {{ metadata.objectives.U }}.</p>
+<p>Elapsed {{ '%.3f'|format(metadata.elapsed_seconds) }} seconds · OR-Tools {{ metadata.solver_version }}.</p>
+<details><summary>Solver stages and provenance</summary><p>Last completed stage: {{ metadata.last_completed_stage or 'None' }}. Tie-break: {{ metadata.tie_break_algorithm }}.</p>
+<pre>{{ metadata.parameters|tojson(indent=2) }}</pre><p>Captured revisions and epochs:</p><pre>{{ metadata.input_epochs|tojson(indent=2) }}</pre>
+<ul>{% for stage in metadata.stages %}<li>{{ stage.stage }}: {{ stage.status }}{% if stage.value is defined %}, value {{ stage.value }}{% endif %}{% if stage.bound is defined %}, bound {{ stage.bound }}{% endif %}</li>{% endfor %}</ul></details>
+<p>These solver results describe the captured inputs. Live validation problems above take precedence after availability, eligibility or configuration changes.</p>
+{% endif %}
+{% if draft %}<p>Draft revision {{ draft.draft_revision }}. Every essential vacancy requires explicit approval, even when eligible volunteers remain. Optional vacancies warn and need no approval.</p>
+<form method="get"><label>Find volunteers for assignment<input name="q" value="{{ candidates.query }}"></label><button>Search volunteers</button></form>
+<nav>{% if candidates.page > 1 %}<a href="?page={{ candidates.page-1 }}&amp;q={{ candidates.query|urlencode }}">Previous volunteers</a>{% endif %}{% if candidates.page * 50 < candidates.total %}<a href="?page={{ candidates.page+1 }}&amp;q={{ candidates.query|urlencode }}">More volunteers</a>{% endif %}</nav>
+<div class="services">{% for service in [1,2] %}<section aria-label="Service {{ service }} assignments">
+<h2>{{ config['service_' ~ service ~ '_label'] }}{% if config['service_' ~ service ~ '_time'] %} · {{ config['service_' ~ service ~ '_time'] }}{% endif %}</h2>
+{% for slot in slots if slot.service_number == service %}<article class="schedule-slot" data-service="{{ service }}" data-position="{{ slot.position_number }}">
+<h3>Position {{ slot.position_number }} · {{ slot.zone|capitalize }}</h3>
+<p>{{ 'Essential' if slot.essential else 'Optional' }}{% if slot.position_number in [1,2] %} · Restricted qualification{% endif %}</p>
+<p><strong>{{ slot.public_label if slot.volunteer_id else 'VACANT' }}</strong></p>
+<p>{{ 'LOCKED vacancy — intentional' if slot.locked and not slot.volunteer_id else ('LOCKED assignment' if slot.locked else 'Unlocked') }} · Slot revision {{ slot.slot_revision }}</p>
+{% if not slot.volunteer_id %}<p><strong>{{ 'APPROVED essential vacancy' if slot.vacancy_approved else ('APPROVAL REQUIRED' if slot.essential else 'WARNING: optional vacancy') }}</strong> · Review identity {{ service }}:{{ slot.position_number }}</p>{% endif %}
+{% if slot.rotation_approved %}<p>APPROVED same-zone rotation exception</p>{% endif %}
+<details><summary>Edit position {{ slot.position_number }}</summary><form method="post" action="/staff/dates/{{ day.id }}/draft/slot">{{ revisions() }}
+<input type="hidden" name="service_number" value="{{ service }}"><input type="hidden" name="position_number" value="{{ slot.position_number }}">
+<label>Assignee<select name="volunteer_id"><option value="">Clear assignment (vacancy)</option>{% if slot.volunteer_id %}<option selected value="{{ slot.volunteer_id }}">{{ slot.public_label }} (current)</option>{% endif %}{% for person in candidates.volunteers if person.id != slot.volunteer_id %}<option value="{{ person.id }}">{{ person.public_label }}{{ ' · restricted-qualified' if person.restricted_qualified else '' }}</option>{% endfor %}</select></label>
+<label>Lock<select name="locked"><option value="false" {{ 'selected' if not slot.locked else '' }}>Unlocked</option><option value="true" {{ 'selected' if slot.locked else '' }}>Locked, preserve during generation</option></select></label>
+<label>Approve resulting same-zone pair (optional reason)<textarea name="rotation_reason" maxlength="1000"></textarea></label><p>Entering a reason explicitly approves the exact resulting pair together with this edit. Availability and qualification cannot be overridden.</p><button>Save position</button></form></details>
+</article>{% endfor %}</section>{% endfor %}</div>
+<details><summary>Swap two positions atomically</summary><form method="post" action="/staff/dates/{{ day.id }}/draft/swap">{{ revisions() }}{% for field in ['first_slot','second_slot'] %}<label>{{ 'First' if field == 'first_slot' else 'Second' }} slot<select name="{{ field }}">{% for slot in slots %}<option value="{{ slot.service_number }}:{{ slot.position_number }}">Service {{ slot.service_number }}, position {{ slot.position_number }} · {{ slot.public_label or 'VACANT' }}</option>{% endfor %}</select></label>{% endfor %}<label>Approve same-zone exception for volunteer (if needed)<select name="rotation_volunteer_id"><option value="">No new exception</option>{% for person in candidates.volunteers %}<option value="{{ person.id }}">{{ person.public_label }}</option>{% endfor %}</select></label><label>Exception reason<textarea name="rotation_reason" maxlength="1000"></textarea></label><button>Save swap</button></form></details>
+<h2>Final publication review</h2>
+{% if rotation_approvals %}<details><summary>Approved rotation exception details</summary>{% for approval in rotation_approvals %}<p>Positions {{ approval.first_position }} and {{ approval.second_position }} · Approved {{ approval.approved_at|utc }} by {{ approval.approving_user }} · {{ approval.reason }}</p>{% endfor %}</details>{% endif %}
+{% if vacancy_approvals %}<details><summary>Approved essential vacancy details</summary>{% for approval in vacancy_approvals %}<p>{{ approval.service_number }}:{{ approval.position_number }} · {{ approval.approved_at|utc }} · {{ approval.approving_user }} · {{ approval.reason }}</p>{% endfor %}</details>{% endif %}
+<form method="post" action="/staff/dates/{{ day.id }}/draft/vacancies">{{ revisions() }}<label>Essential vacancies to approve (service:position, comma separated)<input name="slot_keys" required placeholder="1:1, 2:2" maxlength="100"></label><label>Approval reason<textarea name="reason" required maxlength="1000"></textarea></label><button>Approve identified vacancies</button></form>
+<form method="post" action="/staff/dates/{{ day.id }}/draft/publish">{{ revisions() }}<input type="hidden" name="idempotency_key" value="{{ idempotency_key }}"><label class="radio"><input type="checkbox" name="confirmed" value="true" required>I reviewed all assignments, vacancies, approvals and solver uncertainty. Publish this version and permanently close volunteer self-service.</label><button>Confirm publication</button></form>
+{% else %}<p>No draft exists yet. Generation creates exactly sixteen slots, including vacancies.</p>{% endif %}
+<h2>Current staffing diagnostics</h2>
+<p>Active roster: {{ diagnostics.active }} · No response: {{ diagnostics.no_response }} · Explicit neither: {{ diagnostics.neither }}.</p>
+<ul>{% for service in diagnostics.services %}<li>{{ config['service_' ~ service.service_number ~ '_label'] }}: {{ service.available }} available, {{ service.restricted_available }} restricted-qualified available.</li>{% endfor %}</ul>
+{% if draft %}<p>{{ diagnostics.vacancies|length }} vacancies · {{ diagnostics.locks|length }} locks.</p>{% endif %}
+<p>{{ diagnostics.explanation }}</p>
+{% endblock %}

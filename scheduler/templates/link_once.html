@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<h1>Shared availability link</h1><p>Copy this link into Signal manually. It replaces any previous link and its verified sessions. Responses are preserved.</p>
+<label>Shared link<input readonly value="{{ url }}" data-testid="shared-link"></label><p>Expires {{ expires_at|utc }}. This current link is also available on the Sunday page. Replaced or revoked links are not shown there.</p><a href="/staff/dates/{{ date_id }}">Return to Sunday</a>
+{% endblock %}

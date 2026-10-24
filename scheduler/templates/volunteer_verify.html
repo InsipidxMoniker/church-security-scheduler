@@ -1,0 +1,8 @@
+{% extends "volunteer_base.html" %}{% block content %}
+<h1>{{ local_date }}</h1><p>{{ service_1_label }} · {{ service_2_label }}</p><p>Select your public name and enter the personal PIN given to you privately.</p>
+<form method="get" action="/availability/{{ link_token }}"><label>Search your name<input name="q" value="{{ query }}" maxlength="100" autocomplete="off"></label><button>Search names</button></form>
+<form method="post" action="/availability/{{ link_token }}/verify-pin"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="volunteer-identity">Your name</label><select id="volunteer-identity" name="volunteer_id" required><option value="">Choose your name</option>{% for person in volunteers %}<option value="{{ person.id }}">{{ person.public_label }}</option>{% endfor %}</select>
+<label>Personal PIN<input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4,12}" autocomplete="off" minlength="4" maxlength="12" required></label><button>Verify my identity</button></form>
+<nav>{% if page > 1 %}<a href="?page={{ page-1 }}&page_size={{ page_size }}&q={{ query|urlencode }}">Previous names</a>{% endif %}{% if has_more %}<a href="?page={{ page+1 }}&page_size={{ page_size }}&q={{ query|urlencode }}">More names</a>{% endif %}</nav>
+{% endblock %}

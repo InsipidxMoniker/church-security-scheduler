@@ -243,6 +243,11 @@ secrets/
 
 # Application backup files
 backups/
+recovery/
+*.sqlite.*
+*.sqlite3.*
+*.tar
+*.tar.gz
 
 # Playwright browser test artifacts
 playwright-report/
@@ -251,3 +256,5 @@ test-results/
 # Windows temporary files
 Thumbs.db
 Desktop.ini
+
+data/

@@ -1,0 +1,3 @@
+{% extends "volunteer_base.html" %}{% block content %}
+<h1>Request could not be completed</h1><aside role="alert">{{ message }}</aside><p>No requested change was saved. Review the current form before retrying. If collection is closed or your link has expired, contact your scheduler.</p><a class="button" href="{{ back }}">Review current form</a>
+{% endblock %}

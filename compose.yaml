@@ -1,0 +1,124 @@
+name: church-security-scheduler
+x-app: &app
+  build: .
+  image: church-security-scheduler:1.0.0
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  environment: &environment
+    DATABASE_PATH: /data/scheduler.db
+    TOTP_KEY_FILE: /keys/totp.key
+    APP_ORIGIN: ${APP_ORIGIN:-https://localhost:8443}
+    TRUSTED_PROXIES: 172.30.19.2/32
+    AUTH_ACCOUNT_LIMIT: ${AUTH_ACCOUNT_LIMIT:-5}
+    AUTH_ACCOUNT_WINDOW: ${AUTH_ACCOUNT_WINDOW:-900}
+    AUTH_IP_LIMIT: ${AUTH_IP_LIMIT:-30}
+    AUTH_IP_WINDOW: ${AUTH_IP_WINDOW:-300}
+    PIN_ACCOUNT_LIMIT: ${PIN_ACCOUNT_LIMIT:-5}
+    PIN_ACCOUNT_WINDOW: ${PIN_ACCOUNT_WINDOW:-900}
+    PIN_IP_LIMIT: ${PIN_IP_LIMIT:-30}
+    PIN_IP_WINDOW: ${PIN_IP_WINDOW:-300}
+    PIN_GLOBAL_LIMIT: ${PIN_GLOBAL_LIMIT:-120}
+    ROSTER_IP_LIMIT: ${ROSTER_IP_LIMIT:-60}
+    MAX_BODY_BYTES: ${MAX_BODY_BYTES:-1048576}
+    CSV_MAX_BYTES: ${CSV_MAX_BYTES:-500000}
+  volumes: [database:/data, keys:/keys:ro]
+  networks: [private]
+
+services:
+  app:
+    <<: *app
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 2
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  proxy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.caddy
+    image: church-security-scheduler-proxy:1.0.0
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      PUBLIC_ORIGIN: ${APP_ORIGIN:-https://localhost:8443}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-1048576}
+      # Space-separated exact source CIDRs, not Cloudflare edge ranges/private_ranges.
+      CLOUDFLARED_TRUSTED_PROXIES: ${CLOUDFLARED_TRUSTED_PROXIES:-}
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
+      - "${BIND_IP:-127.0.0.1}:${HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      private:
+        ipv4_address: 172.30.19.2
+    depends_on:
+      app:
+        condition: service_healthy
+  operator:
+    <<: *app
+    profiles: [tools]
+    volumes: [database:/data, keys:/keys, backups:/backups]
+    entrypoint: [python, -m, scheduler.manage]
+  volume-init:
+    image: church-security-scheduler:1.0.0
+    profiles: [tools]
+    user: "0:0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    volumes: [database:/data, keys:/keys, backups:/backups, caddy_data:/caddy-data, caddy_config:/caddy-config]
+    entrypoint: [python, -c, "import os; paths=['/data','/keys','/backups','/caddy-data','/caddy-config']; [(os.chown(p,10001,10001),os.chmod(p,0o700)) for p in paths]"]
+  test:
+    <<: *app
+    profiles: [test]
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    environment:
+      APP_ORIGIN: https://testserver
+      TRUSTED_PROXIES: ""
+    volumes: []
+    command: [pytest, -q, -p, no:cacheprovider]
+  browser-test:
+    <<: *app
+    profiles: [browser-test]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.browser
+    image: church-security-scheduler-browser:1.0.0
+    environment:
+      APP_ORIGIN: https://localhost:8443
+      TRUSTED_PROXIES: 127.0.0.1/32
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      HOME: /tmp
+    volumes: []
+    tmpfs: ["/tmp:size=512m,mode=1777"]
+    shm_size: 256m
+    command: [pytest, -q, -p, no:cacheprovider, browser_tests]
+
+volumes:
+  database:
+  keys:
+  backups:
+  caddy_data:
+  caddy_config:
+networks:
+  private:
+    ipam:
+      config:
+        - subnet: 172.30.19.0/24
+          ip_range: 172.30.19.128/25

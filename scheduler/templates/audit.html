@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}
+<h1>Audit history</h1><p>System actions come from local operator commands. Times are UTC Unix timestamps.</p>
+{% for event in events %}<article><h2>{{ event.action }}</h2><p>{{ event.occurred_at }} · {{ event.actor_type }} · {{ event.staff_id or 'Local operator' }}</p><p>Object: {{ event.object_id }}</p><pre>{{ event.details }}</pre></article>{% endfor %}
+<nav>{% if page > 1 %}<a href="?page={{ page - 1 }}">Previous page</a>{% endif %}<a href="?page={{ page + 1 }}">Next page</a><a href="/staff">Staff workspace</a></nav>
+{% endblock %}

@@ -1,0 +1,16 @@
+FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+WORKDIR /build
+COPY deploy/caddy/go.mod deploy/caddy/go.sum ./
+RUN go mod download && go mod verify
+COPY deploy/caddy/main.go ./
+# Match the official Caddy build's exclusion of unused database drivers.
+RUN go build -mod=readonly -tags=nobadger,nomysql,nopgx -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /out/caddy .
+
+FROM caddy:2-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+# Patch the upstream image's Brotli decoder (CVE-2026-111497).
+RUN apk add --no-cache brotli-libs=1.2.1-r0
+# A copied static binary has no low-port file capability. Keep the upstream runtime
+# environment/CA paths and UID; Compose continues to drop every capability.
+COPY --from=builder /out/caddy /usr/bin/caddy
+USER 10001:10001

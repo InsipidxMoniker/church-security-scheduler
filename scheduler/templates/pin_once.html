@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<h1>{{ 'Current personal PIN' if viewing else 'Personal PIN saved' }}</h1><p>For {{ public_label }}. Share privately with this person; do not post in a Signal group. Leading zeros are part of the PIN.</p>
+<code class="secret" data-testid="generated-pin">{{ pin }}</code><p>{% if viewing %}Viewing does not change this PIN or revoke volunteer sessions.{% else %}Existing volunteer sessions have been revoked. Administrators can view this PIN later using View PIN on the volunteer page.{% endif %}</p><a href="/staff/volunteers/{{ person_id }}">Return to volunteer</a>
+{% endblock %}

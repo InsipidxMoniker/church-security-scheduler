@@ -2,10 +2,10 @@
 ## Implementation specification and acceptance plan
 
 Version: 1.2, October 23, 2026  
-Status: finalized implementation contract, subject to setup and release validation below.  
-Supersedes: v1.1 (and v1.0). Companion: `church_security_scheduler_technical_review.md`.
+Status: maintained business-rule and acceptance reference for v1.0.0, subject to release validation below.
+Supersedes v1.0/v1.1 and completed implementation plans/reviews. Operational procedures are maintained in [README](../README.md).
 
-Normative language: MUST is required for MVP; MAY is optional. Explicit technical defaults below resolve implementation choices, not new church staffing policies. Where this document clarifies or supersedes v1.0/v1.1, use this document. No actual implementation has been validated by this specification.
+Normative language: MUST is required for MVP; MAY is optional. Explicit technical defaults below resolve implementation choices, not new church staffing policies. Where this document clarifies or supersedes v1.0/v1.1, use this document. This contract is not test evidence. Release-review results must identify executed checks and remaining gates separately.
 
 ## 1. Product and boundaries
 
@@ -188,7 +188,7 @@ A compact schema may use service numbers directly instead of a redundant service
 | `idempotency` | actor_id/date_id/operation/key UNIQUE; request digest; resulting version ID; created time. Insert with the publication transaction. |
 | `audit_events` | UUID PK; UTC time; action; object identity; staff FK nullable; volunteer FK nullable; actor type system/staff/volunteer with CHECK for applicable identity; sanitized before/after details and input/revision metadata. Append-only to application users. |
 
-Do not store duplicate PIN plaintext or raw session/link tokens. Store credentials separately from public roster serializers. Restrict deleting referenced rows (`ON DELETE RESTRICT`); deactivate/revoke instead. No user-facing hard-delete API or automated historical-data purge in MVP. Retention of operational data follows deployment policy through documented maintenance; daily backup retention defaults to 30 copies.
+Do not store PIN plaintext or raw session tokens. Approved encrypted PIN/link display copies are described in section 10.1. Store credentials separately from public roster serializers. Restrict deleting referenced rows (`ON DELETE RESTRICT`); deactivate/revoke instead. No user-facing hard-delete API or automated historical-data purge in MVP. Retention of operational data follows deployment policy through documented maintenance; daily backup retention defaults to 30 copies.
 
 SQL CHECKs cannot count all 16 rows or enforce all cross-row rules. The transaction service MUST check the exact slot set `(1..2)×(1..8)`, date ownership, snapshots, approval pair ownership and all eligibility at publication. Integration tests must reject malformed direct SQL references using the actual migrations.
 
@@ -216,9 +216,9 @@ Race outcomes are defined by commit order. If availability changes before public
 
 ### 10.1 Shared link and volunteer PIN
 
-- Generate date-link token with 32 random bytes from OS CSPRNG, URL-safe encoded. Store only SHA-256 digest, plus expiry and revocation. Default lifespan 30 days from issuance, configurable positive duration. Each date has one current link. Rotation generates a new token, revokes the old link and its sessions atomically; availability responses persist. First publication disables all writes independently of expiry.
-- A token cannot be recovered from its digest. Return it once on create/rotation for copying; when lost, rotate. No GET that retrieves plaintext later. UI explicitly explains replacing the Signal link.
-- Default PIN: CSPRNG eight decimal digits, retain leading zeros; configuration may choose 6–12 digits, minimum six. No sequential/default/reused shared PIN generation. Show new/reset PIN once to Administrator over HTTPS, distribute privately. Never send it through Signal group, URL, CSV export, audit, logs, or analytics.
+- Generate date-link token with 32 random bytes from OS CSPRNG, URL-safe encoded. Verify using SHA-256 digest, plus expiry and revocation. Retain a separate Fernet-encrypted current-link display copy bound to date/link/generation, protected by the external key. Default lifespan 30 days from issuance, configurable positive duration. Each date has one current link. Rotation generates a new token, revokes the old link and its sessions atomically; availability responses persist. First publication disables all writes independently of expiry.
+- A token cannot be recovered from its digest. Authorized staff may redisplay the current link from its encrypted copy. Rotation/revocation removes that copy and revokes old sessions. Legacy hash-only links remain valid but need deliberate replacement for redisplay; never rotate automatically during migration.
+- Default PIN: CSPRNG eight decimal digits, retain leading zeros; configuration may choose 4–12 digits. Administrators may set custom 4–12 ASCII digit PINs and explicitly view saved PINs through an audited, CSRF-protected POST that verifies the encrypted copy against the hash. Legacy hash-only PINs need deliberate reset for viewing; upgrades do not reset them. No sequential/default/shared PIN generation. Distribute privately over HTTPS. Never send it through Signal group, URL, CSV export, audit, logs, or analytics.
 - Hash PINs and staff passwords with salted Argon2id, starting at memory 19 MiB, iterations 2, parallelism 1, tune upward subject to benchmark. Rehash outdated parameters after successful verification. Short numeric PINs remain limited against offline guessing; protect backups and offer longer generated PINs. This MVP does not claim PINs are MFA.
 - Verification is server-side. Generic wrong identity/PIN response. Dummy verification for unknown IDs where appropriate, while applying throttles first. No response data before successful verification.
 - Initial configurable throttles: five failed attempts per volunteer across dates within 15 minutes, then block verification for that volunteer for 15 minutes; 30 verification attempts/IP per five minutes; global 120 verification attempts/minute. Also rate-limit valid-link roster GETs at 60/IP/minute. Admin login: five failures/account per 15 minutes plus 30 attempts/IP per five minutes. Counts/blocks are atomic and persist; blocked requests return 429 with Retry-After without hashing. Cleanup expiry, no permanent lockout, Administrator can clear blocks with audit. PIN reset clears that person's block. Shared NAT and deliberate temporary lockout risk must be tested/documented; defaults are tunable security settings, not volunteer scheduling rules.
@@ -245,7 +245,7 @@ Audit successful staff mutations, volunteer response changes, credential lifecyc
 
 ## 11. API semantics
 
-Routes are indicative; controls/state semantics are mandatory. Use HTML/HTMX pages over the same application services as API handlers.
+Routes are indicative; controls/state semantics are mandatory. Use server-rendered HTML forms over the same application services as JSON handlers; no HTMX or JavaScript dependency is implemented.
 
 | Surface | Required behavior |
 |---|---|
@@ -254,7 +254,7 @@ Routes are indicative; controls/state semantics are mandatory. Use HTML/HTMX pag
 | GET/PUT `/availability/{token}/mine` | Scope checks every request; return/write only own booleans and response revision; writes enforce publication guard. |
 | Staff login/logout/MFA/recovery | §10; local bootstrap/recovery separate. |
 | Roster/import/PIN/settings APIs | Operation matrix, row revisions, audit, input epoch updates. |
-| Date open/close/link rotate/summary | Idempotent date identity; no plaintext token recovery; summaries staff-only. |
+| Date open/close/link rotate/summary | Idempotent date identity; authorized encrypted current-link redisplay; summaries staff-only. |
 | Generate/edit/multi-slot swap/lock/config refresh | Expected draft/input revisions, atomic final-state validation or §4 repair-only strict conflict reduction when the preexisting draft is already invalid; explicit draft-applicable config refresh never replaces date timezone. |
 | Approval endpoints | Exact version/slot revisions, nonblank reason; atomic edit+pair approval supported. |
 | Publish/amend/history | Expected revisions, publish idempotency key, immutable versions, one draft. |
@@ -264,7 +264,7 @@ Response codes: 401 unauthenticated, 403 unauthorized, 404 for invalid/inaccessi
 
 ## 12. Deployment and operations
 
-One Debian VM on Proxmox; Docker Compose with application and Caddy or existing TLS proxy; local SQLite persistent volume; no network filesystem for live database. Python 3 supported release at implementation, FastAPI, SQLAlchemy/Alembic, Jinja templates and HTMX, OR-Tools CP-SAT. Use a maintained fixed-template PDF library such as ReportLab; preserve names through a bundled Unicode-capable font and wrap long labels. Pin a tested dependency lockfile and image digests and document the exact supported versions. Resolve versions during implementation rather than hardcoding an unverified current release here.
+One Debian VM on Proxmox; Docker Compose with application and Caddy or existing TLS proxy; local SQLite persistent volume; no network filesystem for live database. Python 3 supported release at implementation, FastAPI, SQLAlchemy/Alembic, Jinja templates and native HTML forms, OR-Tools CP-SAT. Use a maintained fixed-template PDF library such as ReportLab; preserve names through a bundled Unicode-capable font and wrap long labels. Pin a tested dependency lockfile and image digests and document the exact supported versions. Resolve versions during implementation rather than hardcoding an unverified current release here.
 
 One application worker and a bounded local solver subprocess (one generation at a time) suffice. CPU solving must not run on the async event loop or block volunteer requests. Hold an app-wide generation semaphore; concurrent requests get 429/retry guidance. A crashed/killed solver returns an explicit error without commit; release semaphore in cleanup. No durable background queue or Redis is needed for a synchronous bounded operation. Rate-limit/bound PDF work as well. Keep request timeouts above the 10-second solver deadline plus transaction/response overhead (initial proxy timeout 30 seconds).
 
@@ -420,3 +420,9 @@ Required live configuration: actual essential list, church timezone/service labe
 5. A global timezone setting change affects newly opened dates, not an existing Sunday's immutable timezone snapshot. `settings_revision` detects concurrent setting changes; `config_epoch` tracks only draft-applicable changes so timezone-only changes do not make old drafts stale (§3–4, §8–9).
 
 The confirmed decisions and clarifications above are normative in their referenced sections. They do not add monthly scheduling, workload fairness, public schedules, second-person approvals, or any new infrastructure requirement.
+
+## 19. Approved credential-display decisions (October 24, 2026)
+
+Custom/generated four-digit PIN support (4–12 digits) and recoverable encrypted PIN/current-link display are intentional accepted requirements. They supersede the original minimum-six-digit and one-time-display/hash-only wording. Verification remains Argon2id for PINs and digest-based for links; display copies use the original external Fernet key. Only Administrators can issue/reset/view PINs; both staff roles may redisplay the current link. Preserve existing credentials, encrypted rows and key through upgrades. These are not release blockers. See README for legacy upgrade and recovery behavior.
+
+The original technical review, phased handoff/plans, checkpoint reports and client-IP review have been consolidated into README and this maintained contract; their historical versions remain in Git. No future development phase authorization is required by those removed checkpoint instructions. Production performance, live proxy/TLS and off-host restore acceptance in sections 12–16 still require evidence.

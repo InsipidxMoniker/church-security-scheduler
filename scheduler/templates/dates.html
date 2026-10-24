@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}
+<h1>Sunday availability</h1><form method="post" action="/staff/dates"><input type="hidden" name="csrf" value="{{ csrf }}"><label>Sunday date<input type="date" name="local_date" required></label><button>Open Sunday</button></form>
+{% for day in dates %}<article><h2><a href="/staff/dates/{{ day.id }}">{{ day.local_date }}</a></h2><p>{{ day.timezone_snapshot }} · {{ 'Collection open' if day.availability_open and not day.first_published_at else 'Collection closed' }}</p></article>{% else %}<p>No Sundays opened yet.</p>{% endfor %}
+<nav>{% if page > 1 %}<a href="?page={{ page-1 }}">Previous page</a>{% endif %}{% if dates|length == 50 %}<a href="?page={{ page+1 }}">Next page</a>{% endif %}<a href="/staff">Staff workspace</a></nav>
+{% endblock %}

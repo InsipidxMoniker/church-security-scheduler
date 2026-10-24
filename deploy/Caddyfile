@@ -1,0 +1,49 @@
+{
+	admin off
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+	skip_install_trust
+	servers {
+		# Empty by default for direct localhost use. In Tunnel deployments set only
+		# the exact cloudflared LXC source /32 or /128 observed inside this container.
+		trusted_proxies static {$CLOUDFLARED_TRUSTED_PROXIES}
+		trusted_proxies_strict
+		client_ip_headers CF-Connecting-IP
+	}
+	log default {
+		level ERROR
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request delete
+				uri delete
+				headers delete
+			}
+		}
+	}
+}
+
+http://{$SITE_ADDRESS}:8080 {
+	redir {$PUBLIC_ORIGIN}{uri} permanent
+}
+
+https://{$SITE_ADDRESS}:8443 {
+	tls internal
+
+	request_body {
+		max_size {$MAX_BODY_BYTES:1048576}
+	}
+	# Access logging intentionally disabled: future shared links contain tokens.
+	reverse_proxy app:8000 {
+		header_up X-Real-IP {client_ip}
+		header_up -CF-Connecting-IP
+		header_up -CF-Connecting-IPv6
+		header_up -X-Forwarded-For
+		header_up -Forwarded
+		transport http {
+			response_header_timeout 30s
+		}
+	}
+}

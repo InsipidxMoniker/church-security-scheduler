@@ -1,0 +1,14 @@
+FROM church-security-scheduler-proxy:1.0.0 AS caddy
+FROM python:3.13-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /app
+COPY requirements.lock requirements-browser.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock -r requirements-browser.lock && playwright install --with-deps firefox && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home scheduler
+COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
+COPY scheduler ./scheduler
+COPY migrations ./migrations
+COPY alembic.ini pytest.ini ./
+COPY deploy/Caddyfile /app/deploy/Caddyfile
+COPY browser_tests /app/browser_tests
+USER 10001:10001
+CMD ["pytest", "-q", "-p", "no:cacheprovider", "browser_tests"]
