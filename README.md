@@ -1,6 +1,6 @@
 # Church Security Scheduler
 
-Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. v1.0.0 is the initial MVP release candidate. The Caddy dependency blocker is resolved locally; production acceptance checks listed below remain outstanding. See [release history](CHANGELOG.md) and the [business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
+Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current production release: v1.0.0; this checkout prepares **v1.0.1** for owner review. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md) and the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
 
 ## Features and boundaries
 
@@ -19,7 +19,7 @@ There is no public schedule viewer, automatic messaging, volunteer account syste
 
 ## Stack and requirements
 
-Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Test dependencies remain in the app image. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.0`.
+Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.1`.
 
 Target: one Debian VM on Proxmox with local SSD-backed Docker volumes. Acceptance baseline: **2 vCPU / 2 GiB RAM**, a measurement target, not a proven capacity guarantee. Compose limits app to 2 CPUs/768 MiB and proxy to 128 MiB. Do not use NFS/SMB for live SQLite. Reserve several GiB for images/build cache, plus live DB/WAL, migration copies and 30 daily backups; monitor actual growth/free space.
 
@@ -35,7 +35,7 @@ Run commands from the checkout, stopping on failure. Key/bootstrap are one-time 
 git clone https://github.com/InsipidxMoniker/church-security-scheduler.git
 cd church-security-scheduler
 git fetch --tags origin
-git switch --detach v1.0.0
+git switch --detach v1.0.1
 umask 077
 cp .env.example .env
 chmod 600 .env
@@ -43,7 +43,7 @@ mkdir -p recovery
 chmod 700 recovery
 ```
 
-Use private GitHub authentication without embedding tokens in the clone URL. The tag checkout applies **after the owner creates v1.0.0**. During pre-release review use the reviewed `phase-4-publication` checkout; naming the tag here does not create it.
+Use private GitHub authentication without embedding tokens in the clone URL. The tag checkout applies **after the owner creates v1.0.1**. During patch review use `codex/v1.0.1-auth-health`; naming the tag here does not create it. The local v1.0.0 baseline tag is `Release-v1.0.0---Initial-MVP`.
 
 Edit `.env`. Reusable remote Tunnel example:
 
@@ -82,7 +82,7 @@ curl --cacert recovery/caddy-root.crt https://localhost:8443/health/ready
 
 That URL applies to local defaults. For remote settings use the configured hostname/origin port, with DNS pointing to the VM (or curl `--resolve HOST:8443:VM_IP` for a direct check). Expect `{"status":"ready"}` and HTTP redirect to `APP_ORIGIN`. For direct browsers, explicitly trust the verified development CA. For Tunnel access configure LXC CA/SNI/Host below. Do not disable TLS verification. Windows Schannel may need `curl.exe --ssl-no-revoke --cacert ...` for unavailable private-CA revocation lookups; chain/hostname validation remains enabled.
 
-Open `/login` on the configured HTTPS origin, enroll a six-digit/30-second authenticator and save the ten recovery codes shown once. Then:
+Open `/login` on the configured HTTPS origin. After the password step, scan the locally generated QR with an authenticator or enter the displayed secret manually (SHA-1 TOTP, six digits, 30-second period). Enter a valid code to finish enrollment and save the ten recovery codes shown once. The QR/secret are available only during the ten-minute pending enrollment session; an authorized reset uses the same workflow at the account owner's next password login. No external QR service is contacted. Then:
 
 1. **System configuration**: set actual IANA timezone, service labels, optional HH:MM times, and explicitly confirm all eight Essential/Optional flags. Seeds are all-essential, unconfirmed placeholders.
 2. Add actual roster/qualifications; privately provision PINs as Administrator.
@@ -164,6 +164,10 @@ Verify two external clients with synthetic identities and forged headers from an
 
 ## Administration and scheduling
 
+Normal browser navigation to `/` or a protected staff page reaches `/login` when the staff session is missing, pending, expired or revoked. After successful MFA, `/` reaches `/staff`. This applies only to GET requests on the documented page allowlist with an explicit acceptable `text/html` header. Explicit JSON (including mixed Accept lists containing JSON) or JSON request Content-Type retains precedence; absent/wildcard Accept and zero-quality HTML retain existing non-redirecting authorization responses. Role-denied requests remain 403. Mutations, volunteer entry points and exports retain their previous behavior. Redirects always use `/login`; `next`/`return_to` are unsupported.
+
+**System health** at `/staff/health` serves an HTML snapshot for explicit HTML requests and the existing JSON fields for explicit JSON, absent Accept or `*/*`. Both Administrator and Scheduler roles may view it after MFA. It shows application version, database/schema readiness and application-managed backup events, including the last successful backup independently of a later failure. Responses use `Vary: Accept` and `Cache-Control: no-store`. No recorded application backup is a neutral unknown state; **PBS status is not monitored here**. Readiness is a connectivity/schema check, not a full integrity scan or recovery rehearsal. A database outage may prevent authentication and the page itself; HTML failures are sanitized, and existing JSON error statuses are retained.
+
 Both staff roles manage roster, qualifications, Sundays/links, confirmed availability, drafts, approvals and publication. Only Administrators manage global settings, staff and PIN issue/reset/view. Server checks cover history/exports too. The last active Administrator cannot be removed. Audit and `/staff/health` are staff-only.
 
 CSV header is exactly `display_name,restricted_qualified`, booleans `true`/`false`. Upload UTF-8 (optional BOM) or paste, preview, then commit the whole batch. Imports create active identities, never merge names or import PINs. Duplicate active public labels need distinguishing labels. Search defaults to 50/page (API up to 100); no roster cap. Deactivate rather than delete to preserve history. Scheduler-created volunteers need Administrator-issued PINs.
@@ -207,13 +211,37 @@ docker compose up -d app proxy
 
 Deploy reviewed tags, preserving checkout path, Compose project, `.env`, volumes and original key. Default volume names start `church-security-scheduler_`; changing projects creates different volumes and can look like lost data. Never bootstrap/init-key for upgrades.
 
+### v1.0.0 to v1.0.1
+
+This patch needs container rebuild/recreation, **no migration**, no environment changes and no new runtime dependencies. Schema remains `0005_publication_guards`; retain the original key, accounts, PINs, sessions and Caddy volumes. Caddy source/build/configuration is unchanged; its local image label follows the application release. The independent QR decoder is installed only in the browser test image.
+
+After owner review and creation of the release tag, run on Debian/sh from the existing deployment checkout, stopping on failure. Choose a unique backup filename in place of the timestamp placeholder:
+
+```sh
+git status --short
+git fetch origin --tags
+git switch --detach v1.0.1
+docker compose config --quiet
+docker compose build app proxy
+docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.1-YYYYMMDDTHHMMSS.sqlite
+docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.1-YYYYMMDDTHHMMSS.sqlite
+docker compose up -d --wait --wait-timeout 90 app proxy
+docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose ps
+curl --fail --cacert recovery/caddy-root.crt https://localhost:8443/health/ready
+```
+
+Use the configured site hostname/port or direct-origin `--resolve` for remote deployments. Verify existing staff MFA, browser redirects, health HTML/JSON, and a disposable account's QR/manual enrollment before accepting the update. Production deployment requires owner approval. With this unchanged schema, recorded v1.0.0 code/images remain compatible with the same data if an application rollback is needed; retain the recovery backup and follow the general rollback limits below.
+
+### General updates that include migrations
+
 1. Confirm clean checkout, record previous tag/commit, and take verified backup plus protected off-host key/config copy below. For legacy schema, use the old matching release's tool or supported SQLite API; this verifier requires its own head.
 2. Fetch/build before downtime (replace tag for later releases):
 
    ```sh
    git status --short
    git fetch origin --tags
-   git switch --detach v1.0.0
+   git switch --detach v1.0.1
    docker compose config --quiet
    docker compose build app proxy
    ```
@@ -245,8 +273,8 @@ After checking out the reviewed release on Debian, keep the same project, `.env`
 ```sh
 docker compose config --quiet
 docker compose build proxy
-docker run --rm --network none --entrypoint caddy church-security-scheduler-proxy:1.0.0 build-info
-docker run --rm --network none --entrypoint sha256sum church-security-scheduler-proxy:1.0.0 /usr/bin/caddy
+docker run --rm --network none --entrypoint caddy church-security-scheduler-proxy:1.0.1 build-info
+docker run --rm --network none --entrypoint sha256sum church-security-scheduler-proxy:1.0.1 /usr/bin/caddy
 docker compose up -d --no-deps --force-recreate proxy
 docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker compose exec -T proxy sha256sum /usr/bin/caddy
@@ -345,6 +373,8 @@ Tests mount no deployment data/key volumes; app fixtures migrate temporary on-di
 
 October 24 Caddy remediation validation: **398 application + 20 browser/proxy tests passed (418 total; zero failures/skips)**. The browser suite includes a CA-verified HTTP/2 request and HTTP redirect check. Caddy configuration also passed with trust empty, one IPv4 `/32` and one IPv6 `/128` in disposable hardened containers; Compose configuration passed. These checks do not exercise the production LXC/NAT path.
 
+v1.0.1 implementation validation: **460 application + 25 browser/proxy tests passed (485 total; zero failures/skips)**. This preserves the baseline and adds page/API negotiation, session/role boundaries, QR enrollment/reset isolation, health/error/backup-state coverage, independent decoding of Firefox-rendered QR pixels at desktop/mobile widths (including escaped and long Unicode labels), and keyboard navigation. Browser-only `zxing-cpp==3.1.1` is hash-pinned; pip-audit 2.10.1 reported no known findings in the browser lock. No new runtime dependency is installed. The local test deployment was subsequently updated on owner request, with CA-verified startup/redirect checks and preserved data/key/CA fingerprints. A real authenticator scan/manual staff acceptance and the existing Debian/Tunnel/PBS operational checks remain owner tasks; no production deployment was performed.
+
 Maintain locks with disposable Python 3.13, compatible pip 25.2/pip-tools 7.5.3. Preserve pins unless deliberately upgrading; regenerate hashes and rerun both suites:
 
 ```sh
@@ -366,7 +396,7 @@ At review time the latest official stable Caddy release/image was still **2.11.7
 
 Module checksums are verified; `GOTOOLCHAIN=local` and `-mod=readonly` prevent implicit toolchain/graph changes. Static builds retain upstream `nobadger,nomysql,nopgx` tags and use `-trimpath`, no VCS stamping and an empty build ID. A repeat compile with network access disabled reproduced the binary byte-for-byte. The runtime remains the digest-pinned official Caddy Alpine image (Alpine 3.23.7), with patched Brotli 1.2.1-r0 and only `/usr/bin/caddy` replaced. Builder/compiler/cache stay outside the runtime. UID 10001, CA paths, TLS/HTTP2, trust boundaries and Compose hardening are preserved. Return to an official image by removing the builder/binary replacement once its **actual executable** has verified patched dependencies; retain an appropriate patched runtime/Brotli package and repeat validation.
 
-Inspection of the final runtime executable confirmed Caddy v2.11.7, **Go 1.27.3**, **x/net v0.60.0** and SHA-256 `3a890f85693615efacf52466220371f6420496c75d51a4b397757073a3efd66c`. The local linux/amd64 image index is `sha256:0318068db727635c7c752e2baf4efb0f12f815d3bcd7ce68a3af4783fa83329a`; build attestations/platforms can produce a different image digest on another host. Inspect and scan that host's actual artifact too.
+Inspection of the final runtime executable confirmed Caddy v2.11.7, **Go 1.27.3**, **x/net v0.60.0** and SHA-256 `3a890f85693615efacf52466220371f6420496c75d51a4b397757073a3efd66c`. The v1.0.0 remediation's local linux/amd64 image index was `sha256:0318068db727635c7c752e2baf4efb0f12f815d3bcd7ce68a3af4783fa83329a`; build attestations/platforms and release labels can produce a different image digest. v1.0.1 retains the same binary/runtime build. Inspect and scan each deployment's actual artifact too.
 
 Trivy's all-severity scan of this image found **zero critical/high findings and zero Alpine findings**, with the two module matches assessed below. Binary-mode govulncheck reported the OpenPGP module advisory; source-mode analysis of the exact locked build and tags found **zero reachable vulnerabilities, zero affected imported packages**, and that one module-only advisory. This is evidence about the current build, not a claim that the whole application image is vulnerability-free. The earlier high-only scan did not inventory lower-severity findings.
 

@@ -1,6 +1,8 @@
 {% extends "base.html" %}{% block content %}
 <h1>{% if seed %}Set up your authenticator{% else %}Verify your sign-in{% endif %}</h1>
-{% if seed %}<p>Add an account in your authenticator using this secret, with time-based, 6-digit codes and a 30-second interval. Keep the secret private.</p><code class="secret">{{ seed }}</code>{% endif %}
+{% if seed %}<p>Scan this QR code with your authenticator, or enter the secret below manually. Use time-based, 6-digit codes and a 30-second interval. Keep the QR code and secret private.</p>
+<img class="enrollment-qr" src="/mfa/qr.svg" width="320" height="320" alt="Authenticator enrollment QR code">
+<p>Manual setup secret:</p><code class="secret">{{ seed }}</code>{% endif %}
 <form method="post" action="/mfa"><input type="hidden" name="csrf" value="{{ csrf }}">
 <label>Authenticator code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required></label><button>Verify</button></form>
 {% if not seed %}<details><summary>Use a recovery code</summary><p>Each recovery code works once.</p>

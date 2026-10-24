@@ -1,5 +1,6 @@
 import ipaddress
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -9,7 +10,7 @@ import pyotp
 from cryptography.fernet import InvalidToken
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -25,6 +26,13 @@ STAFF = "__Host-staff"
 PENDING = "__Host-pending"
 CSRF = "__Host-csrf"
 PREAUTH = "__Host-preauth"
+HTML_PAGES = frozenset({
+    "/mfa", "/staff", "/staff/users", "/staff/audit", "/staff/health",
+    "/staff/settings", "/staff/volunteers", "/staff/volunteers/new",
+    "/staff/volunteers/import", "/staff/volunteers/{volunteer_id}",
+    "/staff/dates", "/staff/dates/{date_id}", "/staff/dates/{date_id}/draft",
+    "/staff/dates/{date_id}/publications/{version_id}",
+})
 templates = Jinja2Templates(directory="scheduler/templates")
 templates.env.filters["utc"] = lambda value: datetime.fromtimestamp(value, timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if value is not None else "Not set"
 
@@ -77,6 +85,27 @@ def clear_cookie(response, name):
 
 def wants_json(request):
     return "application/json" in request.headers.get("content-type", "") or "application/json" in request.headers.get("accept", "")
+
+
+def explicit_html(request):
+    """Opt in to new HTML behavior; JSON keeps its existing precedence."""
+    accept = ",".join(request.headers.getlist("accept")).lower()
+    if wants_json(request) or "application/json" in accept or "application/json" in request.headers.get("content-type", "").lower():
+        return False
+    for item in accept.split(","):
+        media, *parameters = [part.strip() for part in item.split(";")]
+        if media != "text/html":
+            continue
+        qualities = [part.partition("=")[2].strip() for part in parameters if part.partition("=")[0].strip() == "q"]
+        if not qualities:
+            return True
+        if len(qualities) == 1 and re.fullmatch(r"(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)", qualities[0]) and float(qualities[0]) > 0:
+            return True
+    return False
+
+
+def page_request(request):
+    return request.method == "GET" and getattr(request.scope.get("route"), "path", None) in HTML_PAGES
 
 
 def require_same_origin(request, public_origin):
@@ -141,6 +170,11 @@ def create_app(db=None, security=None, origin=None, clock=None):
     app.state.db = db
 
     def error(problem, request=None):
+        if request is not None and page_request(request) and explicit_html(request):
+            if problem.status == 401 and problem.message == "Sign in required":
+                return RedirectResponse("/login", 303)
+            if request.url.path == "/staff/health" and problem.status >= 500:
+                return templates.TemplateResponse(request=request, name="health.html", context={"health": None}, status_code=problem.status, headers={"Retry-After": str(problem.retry)} if problem.retry else None)
         if request is not None and not wants_json(request) and request.url.path.startswith(("/availability/", "/staff/settings", "/staff/volunteers", "/staff/dates")):
             path = request.url.path
             if path.startswith("/availability/"):
@@ -191,6 +225,8 @@ def create_app(db=None, security=None, origin=None, clock=None):
             "Content-Security-Policy": "default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             "X-Content-Type-Options": "nosniff", "Strict-Transport-Security": "max-age=31536000",
         })
+        if page_request(request):
+            response.headers.add_vary_header("Accept")
         return response
 
     @app.exception_handler(Problem)
@@ -255,15 +291,38 @@ def create_app(db=None, security=None, origin=None, clock=None):
         clear_cookie(response, PREAUTH)
         return response
 
-    @app.get("/mfa")
-    def mfa_page(request: Request):
+    def enrollment(request):
         with db.transaction() as c:
             user, _ = auth(request).session(c, request.cookies.get(PENDING), "pending")
         seed = app.state.security.seed(user) if not user["enrolled"] else None
         uri = pyotp.TOTP(seed).provisioning_uri(user["username"], issuer_name="Church Security Scheduler") if seed else None
+        return {"enrollment_required": not user["enrolled"], "seed": seed, "uri": uri}
+
+    @app.get("/mfa")
+    def mfa_page(request: Request):
+        data = enrollment(request)
         if wants_json(request):
-            return {"enrollment_required": not user["enrolled"], "seed": seed, "uri": uri}
-        return view(request, "mfa.html", seed=seed)
+            return data
+        return view(request, "mfa.html", seed=data["seed"])
+
+    @app.get("/mfa/qr.svg")
+    def enrollment_qr(request: Request):
+        data = enrollment(request)
+        if not data["enrollment_required"]:
+            raise Problem(403, "Enrollment is not available")
+        from reportlab.graphics import renderSVG
+        from reportlab.graphics.barcode.qr import QrCodeWidget
+        from reportlab.graphics.shapes import Drawing, Rect
+        from reportlab.lib.colors import black, white
+        # Four-module quiet zone, solid white background, no text/links/metadata
+        # containing the provisioning URI. Generate in memory, never static files.
+        qr = QrCodeWidget(data["uri"], barBorder=4, barFillColor=black, barStrokeColor=black)
+        x1, y1, x2, y2 = qr.getBounds()
+        scale = 320 / (x2 - x1)
+        drawing = Drawing(320, 320, transform=[scale, 0, 0, scale, -x1 * scale, -y1 * scale])
+        drawing.add(Rect(x1, y1, x2 - x1, y2 - y1, fillColor=white, strokeColor=None))
+        drawing.add(qr)
+        return Response(renderSVG.drawToString(drawing), media_type="image/svg+xml")
 
     @app.post("/mfa")
     async def mfa(request: Request):
@@ -298,8 +357,7 @@ def create_app(db=None, security=None, origin=None, clock=None):
             return {"username": user["username"], "role": user["role"], "version": __version__, "settings": settings, "positions": positions}
         return view(request, "staff.html", user=user, settings=settings, positions=positions)
 
-    @app.get("/staff/health")
-    def health(request: Request):
+    def health_data(request):
         with db.transaction() as c:
             staff(c, request)
             backup = row(c, "SELECT action,occurred_at FROM audit_events WHERE action IN ('backup.completed','backup.failed') ORDER BY occurred_at DESC,rowid DESC LIMIT 1")
@@ -307,6 +365,20 @@ def create_app(db=None, security=None, origin=None, clock=None):
         db.check()
         from scheduler.db import HEAD
         return {"schema": HEAD, "database": "ready", "version": __version__, "backup_status": backup or {"action": "never_recorded"}, "last_successful_backup": last_success}
+
+    @app.get("/staff/health")
+    def health(request: Request):
+        try:
+            data = health_data(request)
+        except RuntimeError:
+            # Preserve the existing JSON error status; HTML gets a useful,
+            # sanitized unavailable page. Never expose exception diagnostics.
+            if explicit_html(request):
+                raise Problem(503, "System health temporarily unavailable", 5) from None
+            raise
+        if explicit_html(request):
+            return view(request, "health.html", health=data)
+        return data
 
     @app.get("/staff/audit")
     def audit_page(request: Request, page: int = 1):

@@ -1,4 +1,6 @@
 :root { font: 17px/1.5 system-ui,sans-serif; color: #17283a; background: #f3f6f9; }
+.enrollment-qr { display:block; width:320px; max-width:100%; height:auto; background:white; }
+.health-details dt { font-weight:700; margin-top:1rem; }.health-details dd { margin:.25rem 0; overflow-wrap:anywhere; }
 body { margin: 0; } header,main,footer { max-width: 58rem; margin: auto; padding: 1.5rem; }
 header { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; border-bottom: 1px solid #becbd5; }
 header a { font-weight: 700; } a { color: #14549a; } main { min-height: 60vh; }

@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block content %}
+<h1>System health</h1>
+<nav aria-label="Staff navigation"><a href="/staff">Staff workspace</a></nav>
+{% if health %}
+<h2>Application and database</h2>
+<dl class="health-details">
+<dt>Application version</dt><dd>{{ health.version }}</dd>
+<dt>Database readiness</dt><dd>{{ health.database }}</dd>
+<dt>Schema / migration status</dt><dd>{{ health.schema }} · matches the expected application schema</dd>
+</dl>
+<p>Readiness checks database connectivity and the expected schema. It is not a full database integrity or recovery check.</p>
+<h2>Application-managed backups</h2>
+{% set backup = health.backup_status or {} %}
+{% if backup.action == 'backup.completed' %}<p>Latest application-managed backup completed at {{ backup.occurred_at|utc }}.</p>
+{% elif backup.action == 'backup.failed' %}<aside>Latest application-managed backup failed at {{ backup.occurred_at|utc }}. Review the backup job before relying on this application backup.</aside>
+{% elif not backup.action or backup.action == 'never_recorded' %}<p>No application-managed backup recorded.</p>
+{% else %}<p>Application-managed backup status unknown: {{ backup.action }}.</p>{% endif %}
+<dl class="health-details"><dt>Last successful application-managed backup</dt>
+<dd>{% if health.last_successful_backup is not none %}{{ health.last_successful_backup|utc }}{% else %}No successful application-managed backup recorded.{% endif %}</dd></dl>
+<p>PBS backup status is not monitored by this application. These application backup records do not describe PBS job status, backup consistency or verified recovery.</p>
+<p>This page is a snapshot. Reload it to check again.</p>
+{% else %}<p>System health temporarily unavailable. Try again shortly.</p>{% endif %}
+{% endblock %}
