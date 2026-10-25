@@ -5,13 +5,16 @@
 <label>Initial password<input name="password" type="password" minlength="15" maxlength="256" autocomplete="new-password" required></label>
 <label>Role<select name="role"><option value="scheduler">Scheduler</option><option value="admin">Administrator</option></select></label><button>Create staff account</button></form>
 <h2>Existing accounts</h2>
+{% if removed %}<p role="status">Staff account deactivated. Historical records retained. Use the Inactive filter to restore access.</p>{% endif %}
+<form method="get"><label>Account status<select name="status">{% for item in ['active','inactive','all'] %}<option value="{{ item }}" {% if status == item %}selected{% endif %}>{{ item|capitalize }}</option>{% endfor %}</select></label><button>Filter accounts</button></form>
 {% for user in users %}<section class="account"><h3>{{ user.username }}</h3><p>{{ 'Active' if user.active else 'Inactive' }} · {{ 'MFA enrolled' if user.enrolled else 'MFA enrollment required' }}</p>
 <form method="post" action="/staff/users/{{ user.id }}/access"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_epoch" value="{{ user.credential_epoch }}">
 <label>Role<select name="role"><option value="scheduler" {% if user.role == 'scheduler' %}selected{% endif %}>Scheduler</option><option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Administrator</option></select></label>
 <label>Status<select name="active"><option value="true" {% if user.active %}selected{% endif %}>Active</option><option value="false" {% if not user.active %}selected{% endif %}>Inactive</option></select></label><button>Save access and revoke sessions</button></form>
+{% if user.active and user.id != actor_id %}<a class="button" href="/staff/users/{{ user.id }}/delete">Delete</a>{% endif %}
 <details><summary>Reset password and MFA</summary><p>This revokes all sessions and recovery codes and requires new authenticator enrollment.</p>
 <form method="post" action="/staff/users/{{ user.id }}/reset"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_epoch" value="{{ user.credential_epoch }}">
 <label>New password<input name="password" type="password" minlength="15" maxlength="256" autocomplete="new-password" required></label><button>Reset credentials</button></form></details>
 <form method="post" action="/staff/users/{{ user.id }}/clear-block"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Clear account login block</button></form></section>{% endfor %}
-<nav>{% if page > 1 %}<a href="?page={{ page - 1 }}">Previous page</a>{% endif %}<a href="?page={{ page + 1 }}">Next page</a><a href="/staff">Staff workspace</a></nav>
+<nav>{% if page > 1 %}<a href="?page={{ page - 1 }}&status={{ status }}">Previous page</a>{% endif %}<a href="?page={{ page + 1 }}&status={{ status }}">Next page</a><a href="/staff">Staff workspace</a></nav>
 {% endblock %}

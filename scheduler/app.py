@@ -32,6 +32,7 @@ HTML_PAGES = frozenset({
     "/staff/volunteers/import", "/staff/volunteers/{volunteer_id}",
     "/staff/dates", "/staff/dates/{date_id}", "/staff/dates/{date_id}/draft",
     "/staff/dates/{date_id}/publications/{version_id}",
+    "/staff/users/{user_id}/delete", "/staff/volunteers/{volunteer_id}/delete",
 })
 templates = Jinja2Templates(directory="scheduler/templates")
 templates.env.filters["utc"] = lambda value: datetime.fromtimestamp(value, timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if value is not None else "Not set"
@@ -65,6 +66,11 @@ class ChangeStaff(Form):
 class ResetStaff(Form):
     expected_epoch: int = Field(ge=1)
     password: str = Field(min_length=15, max_length=256)
+
+
+class DeleteStaff(Form):
+    expected_epoch: int = Field(ge=1)
+    confirmed: bool
 
 
 async def form(request, model):
@@ -175,13 +181,15 @@ def create_app(db=None, security=None, origin=None, clock=None):
                 return RedirectResponse("/login", 303)
             if request.url.path == "/staff/health" and problem.status >= 500:
                 return templates.TemplateResponse(request=request, name="health.html", context={"health": None}, status_code=problem.status, headers={"Retry-After": str(problem.retry)} if problem.retry else None)
-        if request is not None and not wants_json(request) and request.url.path.startswith(("/availability/", "/staff/settings", "/staff/volunteers", "/staff/dates")):
+        if request is not None and not wants_json(request) and request.url.path.startswith(("/availability/", "/staff/settings", "/staff/users", "/staff/volunteers", "/staff/dates")):
             path = request.url.path
             if path.startswith("/availability/"):
                 pieces = path.split("/")
                 back = "/".join(pieces[:3]) + ("/mine" if pieces[-1] == "mine" and problem.status != 401 else "")
             elif path.startswith("/staff/volunteers/import"):
                 back = "/staff/volunteers/import"
+            elif path.startswith("/staff/users"):
+                back = "/staff/users"
             elif path.startswith("/staff/volunteers/") and path.endswith("/pin/view"):
                 back = path.rsplit("/", 2)[0]
             elif path.startswith("/staff/volunteers/") and path.split("/")[-1] in ("pin", "clear-block"):
@@ -392,15 +400,41 @@ def create_app(db=None, security=None, origin=None, clock=None):
         return view(request, "audit.html", events=rows, page=page)
 
     @app.get("/staff/users")
-    def users(request: Request, page: int = 1):
+    def users(request: Request, page: int = 1, status: str = "active", removed: bool = False):
         if not 1 <= page <= 1000000:
             raise Problem(422, "Invalid page")
+        if status not in ("active", "inactive", "all"):
+            raise Problem(422, "Invalid staff status")
+        with db.transaction() as c:
+            actor = staff(c, request, role="admin")
+            where = "" if status == "all" else " WHERE active=?"
+            args = () if status == "all" else (int(status == "active"),)
+            rows = [dict(r) for r in c.exec_driver_sql("SELECT id,username,role,active,enrolled,credential_epoch FROM admin_users" + where + " ORDER BY username LIMIT 50 OFFSET ?", (*args, (page - 1) * 50)).mappings()]
+        if wants_json(request):
+            return {"users": rows, "page": page, "status": status}
+        return view(request, "users.html", users=rows, page=page, status=status, removed=removed, actor_id=actor["id"])
+
+    @app.get("/staff/users/{user_id}/delete")
+    def confirm_staff_removal(user_id: str, request: Request):
         with db.transaction() as c:
             staff(c, request, role="admin")
-            rows = [dict(r) for r in c.exec_driver_sql("SELECT id,username,role,active,enrolled,credential_epoch FROM admin_users ORDER BY username LIMIT 50 OFFSET ?", ((page - 1) * 50,)).mappings()]
-        if wants_json(request):
-            return {"users": rows, "page": page}
-        return view(request, "users.html", users=rows, page=page)
+            target = row(c, "SELECT id,username,credential_epoch FROM admin_users WHERE id=?", (user_id,))
+            if not target:
+                raise Problem(404, "Staff account not found")
+        return view(request, "confirm_removal.html", name=target["username"], kind="staff account", action=f"/staff/users/{user_id}/delete", cancel="/staff/users", revision_field="expected_epoch", revision=target["credential_epoch"])
+
+    @app.post("/staff/users/{user_id}/delete")
+    async def delete_staff(user_id: str, request: Request):
+        data = await form(request, DeleteStaff)
+        with db.transaction() as c:
+            actor = staff(c, request, data.csrf, "admin")
+            if not data.confirmed:
+                raise Problem(422, "Explicit removal confirmation required")
+            target = row(c, "SELECT role FROM admin_users WHERE id=?", (user_id,))
+            if not target:
+                raise Problem(404, "Staff account not found")
+            auth(request).change_access(c, actor, user_id, data.expected_epoch, target["role"], False)
+        return JSONResponse({"deactivated": True}) if wants_json(request) else RedirectResponse("/staff/users?removed=true", 303)
 
     @app.post("/staff/users")
     async def new_user(request: Request):
@@ -422,14 +456,7 @@ def create_app(db=None, security=None, origin=None, clock=None):
             raise Problem(422, "Invalid role")
         with db.transaction() as c:
             actor = staff(c, request, data.csrf, "admin")
-            target = row(c, "SELECT * FROM admin_users WHERE id=?", (user_id,))
-            if not target:
-                raise Problem(404, "Staff account not found")
-            if target["credential_epoch"] != data.expected_epoch:
-                raise Problem(409, "Account changed; refresh before retrying")
-            c.exec_driver_sql("UPDATE admin_users SET role=?,active=?,credential_epoch=credential_epoch+1,updated_at=? WHERE id=?", (data.role, int(data.active), auth(request).clock(), user_id))
-            auth(request).revoke(c, user_id)
-            audit(c, "staff.access_changed", user_id, actor=actor["id"], details={"before": {"role": target["role"], "active": target["active"]}, "after": {"role": data.role, "active": data.active}, "credential_epoch": data.expected_epoch + 1})
+            auth(request).change_access(c, actor, user_id, data.expected_epoch, data.role, data.active)
         return JSONResponse({"updated": True}) if wants_json(request) else RedirectResponse("/staff/users", 303)
 
     @app.post("/staff/users/{user_id}/reset")

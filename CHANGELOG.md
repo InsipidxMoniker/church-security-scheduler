@@ -1,6 +1,15 @@
 # Changelog
 
-## v1.0.1 — Authentication and health usability (unreleased)
+## v1.0.2 — Staff and Volunteer Removal (unreleased)
+
+- Add deliberate named Delete confirmation dialogs beside staff account controls and volunteer Edit controls, with success/error feedback and desktop/mobile keyboard support. GET only displays confirmation; POST requires authenticated permission, same-origin provenance, CSRF, explicit confirmation and the current revision.
+- Reuse reversible deactivation: revoke staff/PIN sessions immediately, retain credentials and historical references, and provide Active/Inactive/All filters with restoration through existing edit forms. Administrators remove staff; both staff roles remove volunteers. Prevent signed-in staff self-removal and removal of the last active Administrator, including through the existing access form.
+- Retain inactive volunteer assignments as visible draft conflicts that block publication. Preserve roster epochs, approval invalidation, locked-assignment and incremental repair behavior. Exclude inactive volunteers from active lists/counts, public PIN selection and future scheduling eligibility; preserve published snapshots, attribution and historical Signal/PDF names.
+- Reuse transactional `staff.access_changed` and `roster.updated` audits with actor, target, UTC event time and before/after status. Reject stale/duplicate requests without overwriting newer edits; roll back deactivation and revocation together if auditing fails.
+- Add focused removal, authorization, concurrency, authentication, publication/export and Firefox regressions. No migration, dependency, solver-priority, infrastructure or roadmap change. Rebuild images for the upgrade; retain existing volumes, encryption key and credentials. See [upgrade guidance](README.md#v101-to-v102).
+- Validated **478 application + 31 browser/proxy tests (509 total, zero failures/skips)**, application/proxy/browser image builds, Compose configuration and whitespace checks. New coverage includes 18 application cases and six desktop/mobile Firefox cases. No merge, tag, release or deployment was performed.
+
+## v1.0.1 — Authentication and health usability
 
 - Redirect explicit-HTML navigation with invalid staff sessions to sign-in on the page allowlist; preserve JSON/default authorization, role restrictions and mutation behavior. No return-to redirects.
 - Add a private same-origin enrollment QR using existing ReportLab and the existing pending MFA session/URI, with manual-secret fallback and unchanged TOTP/recovery confirmation.

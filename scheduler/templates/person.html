@@ -6,6 +6,7 @@
 <label>Status<select name="active"><option value="true" {% if not person or person.active %}selected{% endif %}>Active</option><option value="false" {% if person and not person.active %}selected{% endif %}>Inactive</option></select></label>
 <label>Positions 1 and 2 qualification<select name="restricted_qualified"><option value="false" {% if not person or not person.restricted_qualified %}selected{% endif %}>Not restricted-qualified</option><option value="true" {% if person and person.restricted_qualified %}selected{% endif %}>Restricted-qualified</option></select></label>
 <button>Save volunteer</button></form>
+{% if person and person.active %}<a class="button" href="/staff/volunteers/{{ person.id }}/delete">Delete</a>{% endif %}
 {% if person %}<h2>Personal PIN</h2><p>{{ 'PIN provisioned' if person.has_pin else 'No PIN provisioned' }}. Issuing or resetting a PIN revokes existing volunteer sessions.</p>{% if role == 'admin' %}
 <form method="post" action="/staff/volunteers/{{ person.id }}/pin"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="expected_revision" value="{{ person.revision }}">
 <label for="pin-option">PIN option</label><select id="pin-option" name="mode"><option value="random">Generate a random PIN</option><option value="custom">Set a custom PIN</option></select>

@@ -39,6 +39,26 @@ class Auth:
     def revoke(self, c, user_id):
         c.exec_driver_sql("UPDATE staff_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (self.clock(), user_id))
 
+    def change_access(self, c, actor, user_id, expected_epoch, role, active):
+        if actor["role"] != "admin":
+            raise Problem(403, "Administrator access required")
+        target = row(c, "SELECT * FROM admin_users WHERE id=?", (user_id,))
+        if not target:
+            raise Problem(404, "Staff account not found")
+        if target["credential_epoch"] != expected_epoch:
+            raise Problem(409, "Account changed; refresh before retrying")
+        if role not in ("admin", "scheduler"):
+            raise Problem(422, "Invalid role")
+        if not active and actor["id"] == user_id:
+            raise Problem(409, "You cannot delete your signed-in account")
+        if target["active"] and target["role"] == "admin" and (not active or role != "admin"):
+            if c.exec_driver_sql("SELECT count(*) FROM admin_users WHERE active=1 AND role='admin'").scalar() <= 1:
+                raise Problem(409, "The last active Administrator cannot be removed")
+        c.exec_driver_sql("UPDATE admin_users SET role=?,active=?,credential_epoch=credential_epoch+1,updated_at=? WHERE id=?",
+                          (role, int(active), self.clock(), user_id))
+        self.revoke(c, user_id)
+        audit(c, "staff.access_changed", user_id, actor=actor["id"], details={"before": {"role": target["role"], "active": target["active"]}, "after": {"role": role, "active": active}, "credential_epoch": expected_epoch + 1})
+
     def reset(self, c, user_id, password_hash, actor=None):
         if not row(c, "SELECT id FROM admin_users WHERE id=?", (user_id,)):
             raise Problem(404, "Staff account not found")

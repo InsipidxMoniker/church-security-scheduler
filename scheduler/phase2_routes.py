@@ -50,6 +50,10 @@ class Revision(Form):
     expected_revision: int = Field(ge=1)
 
 
+class DeleteVolunteer(Revision):
+    confirmed: bool
+
+
 class PINOptions(Revision):
     mode: Literal["random", "custom"] = "random"
     custom_pin: SecretStr = SecretStr("")
@@ -144,9 +148,9 @@ def register_phase2(app, origin, client_ip, view):
         return result(request, saved, "/staff/settings")
 
     @app.get("/staff/volunteers")
-    async def roster(request: Request, page: int = 1, page_size: int = 50, q: str = "", status: str = "all"):
+    async def roster(request: Request, page: int = 1, page_size: int = 50, q: str = "", status: str = "active", removed: bool = False):
         data = await run_in_threadpool(flow(request).roster, raw(request), page, page_size, q, status)
-        return JSONResponse(data) if wants_json(request) else view(request, "roster.html", **data)
+        return JSONResponse(data) if wants_json(request) else view(request, "roster.html", removed=removed, **data)
 
     @app.get("/staff/volunteers/new")
     async def new_person(request: Request):
@@ -191,6 +195,18 @@ def register_phase2(app, origin, client_ip, view):
         data = await form(request, PersonEdit)
         saved = await run_in_threadpool(flow(request).save_person, raw(request), data, volunteer_id)
         return result(request, saved, "/staff/volunteers/" + volunteer_id)
+
+    @app.get("/staff/volunteers/{volunteer_id}/delete")
+    async def confirm_volunteer_removal(volunteer_id: str, request: Request):
+        data = await run_in_threadpool(flow(request).read_person, raw(request), volunteer_id)
+        person = data["person"]
+        return view(request, "confirm_removal.html", name=person["display_name"] + " (" + person["public_label"] + ")", kind="volunteer", action=f"/staff/volunteers/{volunteer_id}/delete", cancel="/staff/volunteers/" + volunteer_id, revision_field="expected_revision", revision=person["revision"])
+
+    @app.post("/staff/volunteers/{volunteer_id}/delete")
+    async def delete_volunteer(volunteer_id: str, request: Request):
+        data = await form(request, DeleteVolunteer)
+        saved = await run_in_threadpool(flow(request).save_person, raw(request), data, volunteer_id, True)
+        return result(request, saved, "/staff/volunteers?removed=true")
 
     @app.post("/staff/volunteers/{volunteer_id}/pin")
     async def pin(volunteer_id: str, request: Request):

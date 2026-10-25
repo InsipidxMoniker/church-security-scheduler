@@ -116,7 +116,7 @@ def test_unrelated_401_and_throttling_preserved(world, monkeypatch):
 @pytest.mark.parametrize("username", ["synthetic-admin", "synthetic-scheduler"])
 def test_health_representations_and_headers(world, username):
     sign_in(world, username)
-    expected = {"schema": HEAD, "database": "ready", "version": "1.0.1",
+    expected = {"schema": HEAD, "database": "ready", "version": "1.0.2",
                 "backup_status": {"action": "never_recorded"}, "last_successful_backup": None}
     for headers in ({}, {"Accept": "*/*"}, {"Accept": "application/json"}, {"Accept": "text/html,application/json"}):
         assert world.client.get("/staff/health", headers=headers).json() == expected
@@ -126,7 +126,7 @@ def test_health_representations_and_headers(world, username):
     assert response.status_code == 200 and response.headers["content-type"].startswith("text/html")
     assert "No application-managed backup recorded." in response.text
     assert "PBS backup status is not monitored" in response.text
-    assert HEAD in response.text and "1.0.1" in response.text
+    assert HEAD in response.text and "1.0.2" in response.text
     assert "full database integrity or recovery check" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert "accept" in response.headers["vary"].lower()
@@ -173,7 +173,7 @@ def test_health_template_escapes_unknown_values():
     assert "<script>" not in page and "&lt;script&gt;" in page
     assert "&lt;img" in page
     null = templates.env.get_template("health.html").render(health={
-        "version": "1.0.1", "database": "ready", "schema": HEAD,
+        "version": "1.0.2", "database": "ready", "schema": HEAD,
         "backup_status": None, "last_successful_backup": None,
     })
     assert "No application-managed backup recorded." in null

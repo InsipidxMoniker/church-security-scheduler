@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block content %}
+<section role="dialog" aria-labelledby="removal-title" aria-describedby="removal-description">
+<h1 id="removal-title">Delete {{ kind }}: {{ name }}?</h1>
+<p id="removal-description">This will deactivate {{ name }} and immediately revoke their sessions. Historical records will be retained. {{ 'Administrators' if kind == 'staff account' else 'Administrators and Schedulers' }} can restore this {{ kind }} from the inactive accounts list.</p>
+{% if kind == 'volunteer' %}<p>Existing draft assignments will remain visible as invalid conflicts and must be resolved before publication. Published schedules and exports will remain unchanged.</p>{% endif %}
+<form method="post" action="{{ action }}">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="{{ revision_field }}" value="{{ revision }}">
+<button name="confirmed" value="true">Confirm deletion</button>
+<a class="button" href="{{ cancel }}">Cancel</a>
+</form></section>
+{% endblock %}

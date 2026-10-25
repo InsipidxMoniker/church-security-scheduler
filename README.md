@@ -1,6 +1,6 @@
 # Church Security Scheduler
 
-Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current production release: v1.0.0; this checkout prepares **v1.0.1** for owner review. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md) and the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
+Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Latest completed repository release: v1.0.1; this checkout prepares **v1.0.2** for owner review. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md) and the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
 
 ## Features and boundaries
 
@@ -19,7 +19,7 @@ There is no public schedule viewer, automatic messaging, volunteer account syste
 
 ## Stack and requirements
 
-Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.1`.
+Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.2`.
 
 Target: one Debian VM on Proxmox with local SSD-backed Docker volumes. Acceptance baseline: **2 vCPU / 2 GiB RAM**, a measurement target, not a proven capacity guarantee. Compose limits app to 2 CPUs/768 MiB and proxy to 128 MiB. Do not use NFS/SMB for live SQLite. Reserve several GiB for images/build cache, plus live DB/WAL, migration copies and 30 daily backups; monitor actual growth/free space.
 
@@ -35,7 +35,7 @@ Run commands from the checkout, stopping on failure. Key/bootstrap are one-time 
 git clone https://github.com/InsipidxMoniker/church-security-scheduler.git
 cd church-security-scheduler
 git fetch --tags origin
-git switch --detach v1.0.1
+git switch --detach v1.0.2
 umask 077
 cp .env.example .env
 chmod 600 .env
@@ -43,7 +43,7 @@ mkdir -p recovery
 chmod 700 recovery
 ```
 
-Use private GitHub authentication without embedding tokens in the clone URL. The tag checkout applies **after the owner creates v1.0.1**. During patch review use `codex/v1.0.1-auth-health`; naming the tag here does not create it. The local v1.0.0 baseline tag is `Release-v1.0.0---Initial-MVP`.
+Use private GitHub authentication without embedding tokens in the clone URL. The fresh-install tag checkout applies **after the owner creates v1.0.2**. During patch review use `feature/v1.0.2-staff-volunteer-removal`; naming the tag here does not create it. Completed baseline tags are `Release-v1.0.0---Initial-MVP` and `Release-v1.0.1---Redirects,-MFA-QR,-Health-Page`.
 
 Edit `.env`. Reusable remote Tunnel example:
 
@@ -170,7 +170,11 @@ Normal browser navigation to `/` or a protected staff page reaches `/login` when
 
 Both staff roles manage roster, qualifications, Sundays/links, confirmed availability, drafts, approvals and publication. Only Administrators manage global settings, staff and PIN issue/reset/view. Server checks cover history/exports too. The last active Administrator cannot be removed. Audit and `/staff/health` are staff-only.
 
-CSV header is exactly `display_name,restricted_qualified`, booleans `true`/`false`. Upload UTF-8 (optional BOM) or paste, preview, then commit the whole batch. Imports create active identities, never merge names or import PINs. Duplicate active public labels need distinguishing labels. Search defaults to 50/page (API up to 100); no roster cap. Deactivate rather than delete to preserve history. Scheduler-created volunteers need Administrator-issued PINs.
+**Delete staff / volunteer:** use Delete beside the existing account controls or volunteer Edit link, review the named confirmation dialog, then select Confirm deletion. Cancel saves nothing. Delete deactivates the record, immediately revokes all its sessions and retains its identity, availability, audit records and published history. Administrators may remove other staff accounts; they cannot remove their signed-in account or the last active Administrator. Administrators and Schedulers may remove volunteers. Lists default to Active; choose Inactive (or All), edit the entry and save Active to restore it. Staff restoration retains password/MFA enrollment; volunteer restoration retains the existing PIN and submissions. Revoked sessions remain revoked, so sign in or verify the PIN again.
+
+Inactive volunteers disappear from public name selection, active availability counts and future scheduling eligibility. Existing unpublished assignments stay visible as inactive conflicts, blocking publication. Repair or clear those assignments; unlock invalid locked assignments before generation. Incremental repair and exact-pair approval rules still apply. Published snapshots, attribution, historical names, Signal text and PDFs remain unchanged even after reactivation or renaming. A stale or duplicate removal returns 409; reload and review the current entry instead of repeating an old confirmation. Existing audit actions `staff.access_changed` and `roster.updated` record the target ID, authenticated actor, UTC event time and before/after status.
+
+CSV header is exactly `display_name,restricted_qualified`, booleans `true`/`false`. Upload UTF-8 (optional BOM) or paste, preview, then commit the whole batch. Imports create active identities, never merge names or import PINs. Duplicate active public labels need distinguishing labels. Search defaults to 50/page (API up to 100); no roster cap. The Delete action deactivates an identity and retains history. Scheduler-created volunteers need Administrator-issued PINs.
 
 **Issue/Reset PIN** accepts random/custom digits. **View PIN** is an audited Administrator POST that decrypts/checks the copy against the hash. Reset revokes sessions/personal block, retaining responses. Staff can redisplay the current Sunday link. Replacing/revoking it revokes old links/sessions without deleting responses. Share PINs privately, never in Signal groups, CSV, URLs or reasons.
 
@@ -210,6 +214,27 @@ docker compose up -d app proxy
 ## Updates and rollback limits
 
 Deploy reviewed tags, preserving checkout path, Compose project, `.env`, volumes and original key. Default volume names start `church-security-scheduler_`; changing projects creates different volumes and can look like lost data. Never bootstrap/init-key for upgrades.
+
+### v1.0.1 to v1.0.2
+
+Review branch: `feature/v1.0.2-staff-volunteer-removal`. Release title: **v1.0.2 - Staff and Volunteer Removal**. No schema migration, new dependency, environment change, PIN reset or credential recreation is required; schema head remains `0005_publication_guards`. The solver and proxy configuration are unchanged. Application, proxy and browser image labels advance to 1.0.2.
+
+After explicit owner approval and release-tag creation, record the previous commit/images and use a clean deployment checkout. Stop on failure, keep the existing Compose project/volumes/key and choose unique backup filenames:
+
+```sh
+git status --short
+git fetch origin --tags
+git switch --detach v1.0.2
+docker compose config --quiet
+docker compose build app proxy
+docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.2-YYYYMMDDTHHMMSS.sqlite
+docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.2-YYYYMMDDTHHMMSS.sqlite
+docker compose up -d --wait --wait-timeout 90 app proxy
+docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose ps
+```
+
+Check CA-verified readiness and health version 1.0.2, then use disposable identities to verify removal, sign-in/PIN denial, Inactive filtering and restoration. Check a draft conflict and an existing publication/export before accepting the update. This checkout does not deploy automatically. Recorded v1.0.1 images remain schema-compatible for rollback; deactivated status and revoked sessions persist in the database. Keep the backup and original key; do not restore over a running database.
 
 ### v1.0.0 to v1.0.1
 
@@ -374,6 +399,8 @@ Tests mount no deployment data/key volumes; app fixtures migrate temporary on-di
 October 24 Caddy remediation validation: **398 application + 20 browser/proxy tests passed (418 total; zero failures/skips)**. The browser suite includes a CA-verified HTTP/2 request and HTTP redirect check. Caddy configuration also passed with trust empty, one IPv4 `/32` and one IPv6 `/128` in disposable hardened containers; Compose configuration passed. These checks do not exercise the production LXC/NAT path.
 
 v1.0.1 implementation validation: **460 application + 25 browser/proxy tests passed (485 total; zero failures/skips)**. This preserves the baseline and adds page/API negotiation, session/role boundaries, QR enrollment/reset isolation, health/error/backup-state coverage, independent decoding of Firefox-rendered QR pixels at desktop/mobile widths (including escaped and long Unicode labels), and keyboard navigation. Browser-only `zxing-cpp==3.1.1` is hash-pinned; pip-audit 2.10.1 reported no known findings in the browser lock. No new runtime dependency is installed. The local test deployment was subsequently updated on owner request, with CA-verified startup/redirect checks and preserved data/key/CA fingerprints. A real authenticator scan/manual staff acceptance and the existing Debian/Tunnel/PBS operational checks remain owner tasks; no production deployment was performed.
+
+v1.0.2 implementation validation: **478 application + 31 browser/proxy tests passed (509 total; zero failures/skips)**. Eighteen new application cases cover removal/restoration, staff/PIN session revocation, permissions/provenance/CSRF, stale and concurrent requests, audit rollback, draft conflicts/locked repair, future generation and immutable publication/Signal/PDF history. Six Firefox cases exercise desktop/mobile confirmation, cancellation, keyboard submission, stale feedback, filters and restoration for both authorized roles. Application, proxy and browser images built successfully; Compose configuration and whitespace checks passed. Validation used disposable data; no services were deployed or restarted. Manual staff acceptance and the existing production operational gates remain separate.
 
 Maintain locks with disposable Python 3.13, compatible pip 25.2/pip-tools 7.5.3. Preserve pins unless deliberately upgrading; regenerate hashes and rerun both suites:
 

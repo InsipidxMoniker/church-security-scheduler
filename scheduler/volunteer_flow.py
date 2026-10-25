@@ -9,6 +9,7 @@ import secrets
 import unicodedata
 import uuid
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from cryptography.fernet import InvalidToken
@@ -99,7 +100,7 @@ class VolunteerFlow:
             audit(c, "settings.updated", 1, actor=actor["id"], details={"before": before, "after": after})
             return after
 
-    def roster(self, raw, page=1, page_size=50, query="", status="all"):
+    def roster(self, raw, page=1, page_size=50, query="", status="active"):
         search, offset = page_bounds(page, page_size, query)
         if status not in ("all", "active", "inactive"):
             raise Problem(422, "Invalid roster status")
@@ -135,7 +136,7 @@ class VolunteerFlow:
                           (volunteer_id, name, public_label, public_label.casefold(), (name + " " + public_label).casefold(), int(active), int(qualified)))
         return volunteer_id
 
-    def save_person(self, raw, data, volunteer_id=None):
+    def save_person(self, raw, data, volunteer_id=None, deactivate=False):
         with self.db.transaction() as c:
             actor = self.staff(c, raw, data.csrf)
             if volunteer_id is None:
@@ -145,6 +146,12 @@ class VolunteerFlow:
                 before = self.person(c, volunteer_id)
                 if before["revision"] != data.expected_revision:
                     raise Problem(409, "Volunteer changed; reload the current roster entry")
+                if deactivate:
+                    if not data.confirmed:
+                        raise Problem(422, "Explicit removal confirmation required")
+                    # Keep the current identity and qualifications; reuse the edit path's
+                    # epoch, session revocation, approval invalidation and audit handling.
+                    data = SimpleNamespace(**{key: before[key] for key in ("display_name", "public_label", "restricted_qualified")}, active=False)
                 name = label(data.display_name)
                 public = label(data.public_label or name, "Public label")
                 self.unique_label(c, public.casefold(), data.active, volunteer_id)
