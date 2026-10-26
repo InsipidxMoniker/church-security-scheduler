@@ -1,6 +1,6 @@
 # Church Security Scheduler
 
-Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Latest completed repository release: v1.0.1; this checkout prepares **v1.0.2** for owner review. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md) and the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
+Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Latest completed repository release: **v1.0.2**. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md) and the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
 
 ## Features and boundaries
 
