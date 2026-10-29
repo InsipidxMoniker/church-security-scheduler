@@ -6,8 +6,11 @@
 <label>First service start time (optional)<input name="service_1_time" type="time" value="{{ settings.service_1_time or '' }}"></label>
 <label>Second service label<input name="service_2_label" value="{{ settings.service_2_label }}" maxlength="100" required></label>
 <label>Second service start time (optional)<input name="service_2_time" type="time" value="{{ settings.service_2_time or '' }}"></label>
+<label>Inside zone display label<input name="inside_zone_label" value="{{ settings.inside_zone_label }}" maxlength="100" required></label>
+<label>Outside zone display label<input name="outside_zone_label" value="{{ settings.outside_zone_label }}" maxlength="100" required></label>
+<p>Display labels only: position membership and rotation are fixed. Label changes require explicit configuration refresh on existing drafts.</p>
 <fieldset><legend>Position classifications — both services</legend>{% for p in settings.positions %}
-<label>Position {{ p.number }} · {{ p.zone }} · {{ 'restricted qualification' if p.restricted_required else 'no qualification required' }}<select name="essential_{{ p.number }}"><option value="true" {% if p.essential %}selected{% endif %}>Essential</option><option value="false" {% if not p.essential %}selected{% endif %}>Optional</option></select></label>{% endfor %}</fieldset>
+<label>Position {{ p.number }} · {{ settings[p.zone ~ '_zone_label'] }} · {{ 'Outside Available' if p.restricted_required else 'no qualification required' }}<select name="essential_{{ p.number }}"><option value="true" {% if p.essential %}selected{% endif %}>Essential</option><option value="false" {% if not p.essential %}selected{% endif %}>Optional</option></select></label>{% endfor %}</fieldset>
 <label>Classification confirmation<select name="essentiality_confirmed"><option value="false" {% if not settings.essentiality_confirmed %}selected{% endif %}>Unconfirmed</option><option value="true" {% if settings.essentiality_confirmed %}selected{% endif %}>I explicitly confirm all eight classifications</option></select></label>
 <label>Generated PIN length<select name="pin_digits">{% for count in range(4,13) %}<option value="{{ count }}" {% if settings.security_settings.pin_digits == count %}selected{% endif %}>{{ count }} digits</option>{% endfor %}</select></label>
 <p>Longer PINs improve resistance to guessing. Numeric PINs have limited protection if stored hashes or backups are stolen; protect backups and distribute PINs privately.</p>

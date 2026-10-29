@@ -14,12 +14,13 @@
 <p>Generation uses current affirmative availability and strict zone rotation. Valid locks, including locked vacancies, are preserved. One generation can run at a time with a ten-second total solving budget.</p>
 <button>{{ 'Regenerate draft' if draft else 'Generate draft' }}</button></form>
 {% endif %}
+{% if metadata and not optimization_current %}<aside role="status">Optimization inputs or draft assignments changed, or this result predates the current rifle objectives. Previous solver results describe the earlier snapshot. Regenerate to optimize current inputs.</aside>{% endif %}
 {% if metadata %}
 <h2>Solver result: {{ metadata.status }}</h2>
-{% if metadata.status == 'OPTIMAL' %}<p><strong>All E/O/B/U objectives proven optimal; Sunday canonicalization complete.</strong> Completed results repeat on the pinned build for identical inputs.</p>
+{% if metadata.status == 'OPTIMAL' and optimization_current %}<p><strong>All E/O/RS/RT/RP1/B/U objectives proven optimal; Sunday canonicalization complete.</strong> Completed results repeat on the pinned build for identical inputs.</p>
 {% else %}<aside><strong>Coverage not proven maximal for unfinished coverage stages.</strong> Optimization or canonicalization is incomplete. Timeout incumbents may differ between runs.</aside>{% endif %}
 <p>Proven objectives: {{ metadata.completed_stages|join(', ') or 'None' }}. Canonicalization: {{ 'complete' if metadata.canonicalization_complete else 'unfinished' }} ({{ metadata.canonical_slots }}/16 slots).</p>
-<p>Filled essential (E): {{ metadata.objectives.E }} · Filled optional (O): {{ metadata.objectives.O }} · Both services (B): {{ metadata.objectives.B }} · Retained unlocked assignments (U): {{ metadata.objectives.U }}.</p>
+<p>Filled essential (E): {{ metadata.objectives.E }} · Filled optional (O): {{ metadata.objectives.O }} · Rifle services (RS): {{ metadata.objectives.RS|default('not measured') }} · Rifle assignments (RT): {{ metadata.objectives.RT|default('not measured') }} · Rifle Position 1 (RP1): {{ metadata.objectives.RP1|default('not measured') }} · Both services (B): {{ metadata.objectives.B }} · Retained unlocked assignments (U): {{ metadata.objectives.U }}.</p>
 <p>Elapsed {{ '%.3f'|format(metadata.elapsed_seconds) }} seconds · OR-Tools {{ metadata.solver_version }}.</p>
 <details><summary>Solver stages and provenance</summary><p>Last completed stage: {{ metadata.last_completed_stage or 'None' }}. Tie-break: {{ metadata.tie_break_algorithm }}.</p>
 <pre>{{ metadata.parameters|tojson(indent=2) }}</pre><p>Captured revisions and epochs:</p><pre>{{ metadata.input_epochs|tojson(indent=2) }}</pre>
@@ -32,15 +33,15 @@
 <div class="services">{% for service in [1,2] %}<section aria-label="Service {{ service }} assignments">
 <h2>{{ config['service_' ~ service ~ '_label'] }}{% if config['service_' ~ service ~ '_time'] %} · {{ config['service_' ~ service ~ '_time'] }}{% endif %}</h2>
 {% for slot in slots if slot.service_number == service %}<article class="schedule-slot" data-service="{{ service }}" data-position="{{ slot.position_number }}">
-<h3>Position {{ slot.position_number }} · {{ slot.zone|capitalize }}</h3>
-<p>{{ 'Essential' if slot.essential else 'Optional' }}{% if slot.position_number in [1,2] %} · Restricted qualification{% endif %}</p>
+<h3>Position {{ slot.position_number }} · {{ config.get(slot.zone ~ '_zone_label', slot.zone|capitalize) }}</h3>
+<p>{{ 'Essential' if slot.essential else 'Optional' }}{% if slot.position_number in [1,2] %} · Outside Available{% endif %}</p>
 <p><strong>{{ slot.public_label if slot.volunteer_id else 'VACANT' }}</strong></p>
 <p>{{ 'LOCKED vacancy — intentional' if slot.locked and not slot.volunteer_id else ('LOCKED assignment' if slot.locked else 'Unlocked') }} · Slot revision {{ slot.slot_revision }}</p>
 {% if not slot.volunteer_id %}<p><strong>{{ 'APPROVED essential vacancy' if slot.vacancy_approved else ('APPROVAL REQUIRED' if slot.essential else 'WARNING: optional vacancy') }}</strong> · Review identity {{ service }}:{{ slot.position_number }}</p>{% endif %}
 {% if slot.rotation_approved %}<p>APPROVED same-zone rotation exception</p>{% endif %}
 <details><summary>Edit position {{ slot.position_number }}</summary><form method="post" action="/staff/dates/{{ day.id }}/draft/slot">{{ revisions() }}
 <input type="hidden" name="service_number" value="{{ service }}"><input type="hidden" name="position_number" value="{{ slot.position_number }}">
-<label>Assignee<select name="volunteer_id"><option value="">Clear assignment (vacancy)</option>{% if slot.volunteer_id %}<option selected value="{{ slot.volunteer_id }}">{{ slot.public_label }} (current)</option>{% endif %}{% for person in candidates.volunteers if person.id != slot.volunteer_id %}<option value="{{ person.id }}">{{ person.public_label }}{{ ' · restricted-qualified' if person.restricted_qualified else '' }}</option>{% endfor %}</select></label>
+<label>Assignee<select name="volunteer_id"><option value="">Clear assignment (vacancy)</option>{% if slot.volunteer_id %}<option selected value="{{ slot.volunteer_id }}">{{ slot.public_label }} (current)</option>{% endif %}{% for person in candidates.volunteers if person.id != slot.volunteer_id %}<option value="{{ person.id }}">{{ person.public_label }}{{ ' · Outside Available' if person.outside_available else '' }}</option>{% endfor %}</select></label>
 <label>Lock<select name="locked"><option value="false" {{ 'selected' if not slot.locked else '' }}>Unlocked</option><option value="true" {{ 'selected' if slot.locked else '' }}>Locked, preserve during generation</option></select></label>
 <label>Approve resulting same-zone pair (optional reason)<textarea name="rotation_reason" maxlength="1000"></textarea></label><p>Entering a reason explicitly approves the exact resulting pair together with this edit. Availability and qualification cannot be overridden.</p><button>Save position</button></form></details>
 </article>{% endfor %}</section>{% endfor %}</div>
@@ -53,7 +54,7 @@
 {% else %}<p>No draft exists yet. Generation creates exactly sixteen slots, including vacancies.</p>{% endif %}
 <h2>Current staffing diagnostics</h2>
 <p>Active roster: {{ diagnostics.active }} · No response: {{ diagnostics.no_response }} · Explicit neither: {{ diagnostics.neither }}.</p>
-<ul>{% for service in diagnostics.services %}<li>{{ config['service_' ~ service.service_number ~ '_label'] }}: {{ service.available }} available, {{ service.restricted_available }} restricted-qualified available.</li>{% endfor %}</ul>
+<ul>{% for service in diagnostics.services %}<li>{{ config['service_' ~ service.service_number ~ '_label'] }}: {{ service.available }} available, {{ service.outside_available_count }} Outside Available; {{ service.rifle_available }} Rifle Qualified available.</li>{% endfor %}</ul>
 {% if draft %}<p>{{ diagnostics.vacancies|length }} vacancies · {{ diagnostics.locks|length }} locks.</p>{% endif %}
 <p>{{ diagnostics.explanation }}</p>
 {% endblock %}

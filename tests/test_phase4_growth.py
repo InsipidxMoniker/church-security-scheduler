@@ -26,7 +26,7 @@ def test_100_volunteers_five_sundays_publication_amendment_and_bounded_queries(w
         if statement.lstrip().upper().startswith("SELECT"):
             queries.append(statement)
     for i in range(100):
-        people.append(create_person(world.client, f"Synthetic growth {i:03}", restricted_qualified=i < 16))
+        people.append(create_person(world.client, f"Synthetic growth {i:03}", outside_available=i < 16))
         if i in (19,99):
             day = open_date(world.client)
             queries = []

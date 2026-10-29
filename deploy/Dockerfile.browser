@@ -1,4 +1,4 @@
-FROM church-security-scheduler-proxy:1.0.2 AS caddy
+FROM church-security-scheduler-proxy:1.0.3 AS caddy
 FROM python:3.13-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app

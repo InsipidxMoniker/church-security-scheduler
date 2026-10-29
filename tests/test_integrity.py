@@ -22,7 +22,7 @@ def graph(world):
     dates, versions, people = [uid(), uid()], [uid(), uid()], [uid(), uid()]
     with world.db.transaction() as c:
         for person in people:
-            c.exec_driver_sql("INSERT INTO volunteers(id,display_name,normalized_label,active,restricted_qualified) VALUES(?,?,?,1,1)", (person, "Synthetic " + person, person))
+            c.exec_driver_sql("INSERT INTO volunteers(id,display_name,normalized_label,active,outside_available) VALUES(?,?,?,1,1)", (person, "Synthetic " + person, person))
         for index in range(2):
             c.exec_driver_sql("INSERT INTO service_dates(id,local_date,timezone_snapshot) VALUES(?,?,?)", (dates[index], ["2026-10-25", "2026-11-01"][index], "America/Los_Angeles"))
             c.exec_driver_sql("INSERT INTO schedule_versions(id,date_id,status,config_snapshot,config_epoch,creator) VALUES(?,?,'draft','{}',1,?)", (versions[index], dates[index], world.admin_id))

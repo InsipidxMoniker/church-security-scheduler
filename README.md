@@ -1,25 +1,25 @@
 # Church Security Scheduler
 
-Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Latest completed repository release: v1.0.1; this checkout prepares **v1.0.2** for owner review. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md) and the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md).
+Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current version: **v1.0.3**. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md), the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md) and the [approved v1.0.3 feature amendment](docs/v1.0.3-qualification-zones.md).
 
 ## Features and boundaries
 
 - Two services, eight fixed positions per service, sixteen slots per Sunday.
 - Roster, qualifications, search/pagination and atomic UTF-8 CSV import.
 - Shared Sunday links and personal PIN verification; first-service, second-service, both or neither availability. No response is distinct from neither.
-- OR-Tools generation prioritizes essential coverage, optional coverage, double-service assignments, then retained unlocked assignments. Equal solutions use a deterministic Sunday/UUID tie-break; there is no cross-week fairness score.
+- OR-Tools generation prioritizes essential coverage (E), optional coverage (O), services with a Rifle Qualified assignment at Positions 1/2 (RS), total such assignments (RT), Rifle Qualified assignments at Position 1 (RP1), double-service assignments (B), then retained unlocked assignments (U). Equal solutions use the existing deterministic Sunday/UUID tie-break; there is no cross-week fairness score.
 - Manual assignments, clearing, swaps, locks, incremental repair and explicit configuration refresh.
 - Reasoned approval of exact same-zone pairs and essential vacancies, deliberate publication, immutable numbered history and amendments.
 - Staff-only Signal text and PDF for selected publications; manual distribution.
 - Individual Administrator/Scheduler accounts, mandatory TOTP, recovery codes, audit history, persistent throttles, online SQLite backup and quarantined restore.
 
-Partial/empty schedules are legal. Only active, affirmatively available, qualified people can be assigned. Positions 1/2 require restricted qualification; outside positions are 1/2/3/8 and inside positions 4/5/6/7. Automatic generation always switches zones for double assignments. Manual approval waives only rotation, never eligibility or per-service uniqueness. Every essential vacancy needs approval before publication, even if a candidate could fill it. The same staff member may approve and publish as separate audited actions.
+Partial/empty schedules are legal. Only active, affirmatively available, qualified people can be assigned. Positions 1/2 require **Outside Available** (formerly Restricted); positions 3/8 do not. **Rifle Qualified** requires Outside Available and is a soft preference, never a staffing or publication requirement. Outside positions are 1/2/3/8 and inside positions 4/5/6/7. Administrators may rename their display labels; mapping and rotation still use the fixed internal identities. Automatic generation always switches zones for double assignments. Manual approval waives only rotation, never eligibility or per-service uniqueness. Every essential vacancy needs approval before publication, even if a candidate could fill it. The same staff member may approve and publish as separate audited actions.
 
 There is no public schedule viewer, automatic messaging, volunteer account system, multi-church support, multi-date generation, unpublish or database downgrade. General batch editing and swaps needing two new rotation approvals use the JSON edit API; the HTML swap form accepts one new approval. Signal copy uses native select-all/copy. DejaVu supports many scripts but not every glyph; inspect actual labels and RTL wrapping before use.
 
 ## Stack and requirements
 
-Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.2`.
+Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.3`.
 
 Target: one Debian VM on Proxmox with local SSD-backed Docker volumes. Acceptance baseline: **2 vCPU / 2 GiB RAM**, a measurement target, not a proven capacity guarantee. Compose limits app to 2 CPUs/768 MiB and proxy to 128 MiB. Do not use NFS/SMB for live SQLite. Reserve several GiB for images/build cache, plus live DB/WAL, migration copies and 30 daily backups; monitor actual growth/free space.
 
@@ -35,7 +35,7 @@ Run commands from the checkout, stopping on failure. Key/bootstrap are one-time 
 git clone https://github.com/InsipidxMoniker/church-security-scheduler.git
 cd church-security-scheduler
 git fetch --tags origin
-git switch --detach v1.0.2
+git switch --detach v1.0.3
 umask 077
 cp .env.example .env
 chmod 600 .env
@@ -43,7 +43,7 @@ mkdir -p recovery
 chmod 700 recovery
 ```
 
-Use private GitHub authentication without embedding tokens in the clone URL. The fresh-install tag checkout applies **after the owner creates v1.0.2**. During patch review use `feature/v1.0.2-staff-volunteer-removal`; naming the tag here does not create it. Completed baseline tags are `Release-v1.0.0---Initial-MVP` and `Release-v1.0.1---Redirects,-MFA-QR,-Health-Page`.
+Use private GitHub authentication without embedding tokens in the clone URL. Check out the v1.0.3 release tag for a fresh installation. Use the upgrade procedure below for an existing database.
 
 Edit `.env`. Reusable remote Tunnel example:
 
@@ -71,7 +71,7 @@ docker compose ps
 
 Compose creates named volumes; no host data/key directories are needed. `volume-init` sets volume roots to UID/GID 10001, mode 0700, without replacing contents. It is the only root maintenance service and has limited ownership capabilities. App/proxy use UID 10001, read-only root filesystems, dropped capabilities and bounded tmpfs. App mounts keys read-only; operator can write keys/backups.
 
-`init-key` generates `/keys/totp.key`, refusing overwrite. `migrate` initializes SQLite; no SQL import or automatic startup migration is needed. Expected head: `0005_publication_guards`. Bootstrap prompts privately for a 15–256-character password and refuses when any staff account exists. No default credentials or public registration/reset routes exist.
+`init-key` generates `/keys/totp.key`, refusing overwrite. `migrate` initializes SQLite; no SQL import or automatic startup migration is needed. Expected head: `0006_qualification_zones`. Bootstrap prompts privately for a 15–256-character password and refuses when any staff account exists. No default credentials or public registration/reset routes exist.
 
 Caddy creates an internal CA on startup. Export its **public certificate only**:
 
@@ -166,6 +166,8 @@ Verify two external clients with synthetic identities and forged headers from an
 
 Normal browser navigation to `/` or a protected staff page reaches `/login` when the staff session is missing, pending, expired or revoked. After successful MFA, `/` reaches `/staff`. This applies only to GET requests on the documented page allowlist with an explicit acceptable `text/html` header. Explicit JSON (including mixed Accept lists containing JSON) or JSON request Content-Type retains precedence; absent/wildcard Accept and zero-quality HTML retain existing non-redirecting authorization responses. Role-denied requests remain 403. Mutations, volunteer entry points and exports retain their previous behavior. Redirects always use `/login`; `next`/`return_to` are unsupported.
 
+For explicit HTML submissions to the staff login form, incorrect credentials return **401 on the styled login page**, with a generic “Invalid username or password” alert, an escaped username and an empty password field. The retry form gets fresh preauth CSRF; no pending/authenticated session is created by a failed attempt. Form/CSRF failures retain 422/403 and throttles retain 429/Retry-After. Invalid MFA/recovery codes use the same inline pattern on the MFA page (401); throttles retain 429 and the original valid pending session. Codes are never repopulated, and an expired pending session requires password sign-in again. Explicit JSON takes precedence; absent/wildcard/disabled HTML Accept retains the existing JSON errors, including `{"detail":"Invalid credentials"}`. Other API/mutation error handling, CSRF/provenance checks, TOTP enforcement and credential throttles are unchanged.
+
 **System health** at `/staff/health` serves an HTML snapshot for explicit HTML requests and the existing JSON fields for explicit JSON, absent Accept or `*/*`. Both Administrator and Scheduler roles may view it after MFA. It shows application version, database/schema readiness and application-managed backup events, including the last successful backup independently of a later failure. Responses use `Vary: Accept` and `Cache-Control: no-store`. No recorded application backup is a neutral unknown state; **PBS status is not monitored here**. Readiness is a connectivity/schema check, not a full integrity scan or recovery rehearsal. A database outage may prevent authentication and the page itself; HTML failures are sanitized, and existing JSON error statuses are retained.
 
 Both staff roles manage roster, qualifications, Sundays/links, confirmed availability, drafts, approvals and publication. Only Administrators manage global settings, staff and PIN issue/reset/view. Server checks cover history/exports too. The last active Administrator cannot be removed. Audit and `/staff/health` are staff-only.
@@ -174,14 +176,20 @@ Both staff roles manage roster, qualifications, Sundays/links, confirmed availab
 
 Inactive volunteers disappear from public name selection, active availability counts and future scheduling eligibility. Existing unpublished assignments stay visible as inactive conflicts, blocking publication. Repair or clear those assignments; unlock invalid locked assignments before generation. Incremental repair and exact-pair approval rules still apply. Published snapshots, attribution, historical names, Signal text and PDFs remain unchanged even after reactivation or renaming. A stale or duplicate removal returns 409; reload and review the current entry instead of repeating an old confirmation. Existing audit actions `staff.access_changed` and `roster.updated` record the target ID, authenticated actor, UTC event time and before/after status.
 
-CSV header is exactly `display_name,restricted_qualified`, booleans `true`/`false`. Upload UTF-8 (optional BOM) or paste, preview, then commit the whole batch. Imports create active identities, never merge names or import PINs. Duplicate active public labels need distinguishing labels. Search defaults to 50/page (API up to 100); no roster cap. The Delete action deactivates an identity and retains history. Scheduler-created volunteers need Administrator-issued PINs.
+CSV header is `display_name,outside_available,rifle_qualified`, booleans `true`/`false`. Rifle Qualified requires Outside Available; invalid rows prevent the entire import. Legacy `display_name,restricted_qualified` remains accepted, explicitly identified in preview, with Rifle Qualified false. Upload UTF-8 (optional BOM) or paste, preview, then commit the whole batch. Imports create active identities, never merge names or import PINs. Duplicate active public labels need distinguishing labels. Search defaults to 50/page (API up to 100); no roster cap. The Delete action deactivates an identity and retains history. Scheduler-created volunteers need Administrator-issued PINs.
+
+Both staff roles edit Outside Available and Rifle Qualified. To remove Outside Available from a Rifle Qualified person, first clear Rifle Qualified and save; then remove Outside Available. No qualification is silently cleared. Rifle-only changes leave legal draft assignments intact and mark earlier optimization inputs outdated; regenerate to apply the new preference. Qualification information stays off volunteer views and Signal/PDF exports.
+
+At fixed E/O/RS/RT, **RP1** prefers the Rifle Qualified volunteer at Position 1 when only one can fill Positions 1/2 in a service. Another eligible Outside Available volunteer may fill Position 2; two rifles may fill both. RP1 is soft, subordinate to coverage/rifle distribution/total, and ahead of B/U. A standard-volunteer lock or intentional vacancy at Position 1 is binding, so the rifle can use Position 2. Earlier six-stage results are marked historical; regenerate explicitly to measure/prove RP1. This refinement needs no additional migration or version bump.
+
+Only Administrators edit the Inside/Outside display labels in System configuration. Labels are trimmed, nonblank, at most 100 characters, free of control characters and distinct ignoring case. Renaming advances configuration/settings revisions; existing drafts require explicit refresh with a diff. Existing date timezones and published label snapshots remain unchanged. New publications/exports use their captured labels; older payloads retain their historical output representation.
 
 **Issue/Reset PIN** accepts random/custom digits. **View PIN** is an audited Administrator POST that decrypts/checks the copy against the hash. Reset revokes sessions/personal block, retaining responses. Staff can redisplay the current Sunday link. Replacing/revoking it revokes old links/sessions without deleting responses. Share PINs privately, never in Signal groups, CSV, URLs or reasons.
 
 Volunteers select their label, verify PIN and save one of four explicit choices while collection is open before first publication. Sessions last 30 idle minutes/two absolute hours, scoped to person/date/link generation/credential epoch. Others' responses, qualifications and schedules stay private. Staff enter only volunteer-confirmed responses with a reason; after publication an amendment draft is required.
 
 1. **Sunday availability -> Open Sunday**: local Sundays only. Create/share link manually; inspect response counts. Close/reopen collection before publication only.
-2. **Schedule draft -> Generate draft**: inspect all slots/proof stages. `OPTIMAL` proves E/O/B/U and full canonicalization. `FEASIBLE` is legal but proof/canonicalization is unfinished. A vacancy does not prove that position has no candidate.
+2. **Schedule draft -> Generate draft**: inspect all slots/proof stages. `OPTIMAL` proves E/O/RS/RT/RP1/B/U and full canonicalization. `FEASIBLE` is legal but proof/canonicalization is unfinished. A stage starts only after the previous one is proven optimal; all stages share the existing ten-second budget. A vacancy does not prove that position has no candidate. Missing rifle coverage requires no new approval.
 3. Expand **Edit position N** to assign/clear/lock; use atomic swaps and search/page candidates. Invalid drafts permit conflict-reducing repairs only. Invalid locks block generation; locked same-zone pairs block even with approval. Finish manually or explicitly repair/unlock.
 4. New same-zone pairs need a nonblank reason with the edit. Approve exact essential vacancies (e.g. `1:1, 2:2`) with a reason. Optional vacancies warn. Approvals bind exact revisions/fingerprints; change-and-revert never restores an invalid approval.
 5. Confirm publication separately. Server rechecks eligibility/setup/slots/approvals/epochs/base in one transaction. First publication permanently closes volunteer writes/revokes sessions. On 409 reload/review. Same publication key/content retries return the original result.
@@ -217,9 +225,9 @@ Deploy reviewed tags, preserving checkout path, Compose project, `.env`, volumes
 
 ### v1.0.1 to v1.0.2
 
-Review branch: `feature/v1.0.2-staff-volunteer-removal`. Release title: **v1.0.2 - Staff and Volunteer Removal**. No schema migration, new dependency, environment change, PIN reset or credential recreation is required; schema head remains `0005_publication_guards`. The solver and proxy configuration are unchanged. Application, proxy and browser image labels advance to 1.0.2.
+**v1.0.2 - Staff and Volunteer Removal.** No schema migration, new dependency, environment change, PIN reset or credential recreation is required; schema head remains `0005_publication_guards`. The solver and proxy configuration are unchanged. Application, proxy and browser image labels advance to 1.0.2.
 
-After explicit owner approval and release-tag creation, record the previous commit/images and use a clean deployment checkout. Stop on failure, keep the existing Compose project/volumes/key and choose unique backup filenames:
+Record the previous commit/images and use a clean deployment checkout. Stop on failure, keep the existing Compose project/volumes/key and choose unique backup filenames:
 
 ```sh
 git status --short
@@ -236,11 +244,44 @@ docker compose ps
 
 Check CA-verified readiness and health version 1.0.2, then use disposable identities to verify removal, sign-in/PIN denial, Inactive filtering and restoration. Check a draft conflict and an existing publication/export before accepting the update. This checkout does not deploy automatically. Recorded v1.0.1 images remain schema-compatible for rollback; deactivated status and revoked sessions persist in the database. Keep the backup and original key; do not restore over a running database.
 
+### v1.0.2 to v1.0.3
+
+This upgrade requires migration **0006**, with no dependency, key, account, PIN or environment changes. See the [feature amendment](docs/v1.0.3-qualification-zones.md) for schema details, test evidence and remaining operational gates. The following operator instructions use Debian/sh. Production deployment validation remains a separate operational task.
+
+First, while still using the previous checkout and matching application image, record commit/image IDs, protect the original key/config/CA recovery material, stop writes, and take a verified backup. The old verifier must be used before switching images: the v1.0.3 verifier intentionally rejects old schema 0005.
+
+```sh
+git status --short
+git rev-parse HEAD
+docker compose images
+docker compose stop proxy app
+docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.3-YYYYMMDDTHHMMSS.sqlite
+docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.3-YYYYMMDDTHHMMSS.sqlite
+```
+
+Replace the timestamp consistently with a unique value and stop on any failure. Export/protect that verified backup and original key/config under the existing recovery process before migrating. Keep enough database-volume space for an additional pre-migration SQLite copy. Then check out the v1.0.3 release, preserving the same project and volumes:
+
+```sh
+git fetch origin --tags
+git switch --detach v1.0.3
+docker compose config --quiet
+docker compose build app proxy
+docker compose --profile tools run --rm -T operator migrate
+docker compose --profile tools run --rm -T operator verify-backup --source /data/scheduler.db
+docker compose up -d --wait --wait-timeout 90 app proxy
+docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose ps
+```
+
+Verify CA-validated readiness and authenticated health (`1.0.3`, `0006_qualification_zones`), existing MFA/PINs/availability, old publication hashes/text/PDF, and matching Outside Available values with every existing Rifle Qualified false. Review each old draft's explicit configuration diff/refresh; do not regenerate or publish silently. Exercise label editing and qualification dependency with disposable data. The migration itself preserves all slots, locks, approvals, credentials, UUIDs, audit and publication rows. Stale drafts keep their assignments visible; existing timezone snapshots stay fixed.
+
+On failure keep public traffic stopped and preserve the failed state and original backup. **Do not run previous images against schema 0006 or attempt an Alembic downgrade.** To roll back, use the recorded previous code/image and verified pre-migration backup plus original key/config in a clean isolated destination through the matching previous release's quarantined restore procedure below. To recover into v1.0.3, migrate an offline copy of the old backup before current-head verification/restore; preserve the original. Both upgrade preservation and the offline-copy/current restore path are covered by automated tests. Restore revokes sessions/links and closes collection; post-backup changes are lost. Never overwrite a live destination, reset a database/key, delete WAL/SHM, or use `down -v`.
+
 ### v1.0.0 to v1.0.1
 
 This patch needs container rebuild/recreation, **no migration**, no environment changes and no new runtime dependencies. Schema remains `0005_publication_guards`; retain the original key, accounts, PINs, sessions and Caddy volumes. Caddy source/build/configuration is unchanged; its local image label follows the application release. The independent QR decoder is installed only in the browser test image.
 
-After owner review and creation of the release tag, run on Debian/sh from the existing deployment checkout, stopping on failure. Choose a unique backup filename in place of the timestamp placeholder:
+Run on Debian/sh from the existing deployment checkout, stopping on failure. Choose a unique backup filename in place of the timestamp placeholder:
 
 ```sh
 git status --short
@@ -401,6 +442,14 @@ October 24 Caddy remediation validation: **398 application + 20 browser/proxy te
 v1.0.1 implementation validation: **460 application + 25 browser/proxy tests passed (485 total; zero failures/skips)**. This preserves the baseline and adds page/API negotiation, session/role boundaries, QR enrollment/reset isolation, health/error/backup-state coverage, independent decoding of Firefox-rendered QR pixels at desktop/mobile widths (including escaped and long Unicode labels), and keyboard navigation. Browser-only `zxing-cpp==3.1.1` is hash-pinned; pip-audit 2.10.1 reported no known findings in the browser lock. No new runtime dependency is installed. The local test deployment was subsequently updated on owner request, with CA-verified startup/redirect checks and preserved data/key/CA fingerprints. A real authenticator scan/manual staff acceptance and the existing Debian/Tunnel/PBS operational checks remain owner tasks; no production deployment was performed.
 
 v1.0.2 implementation validation: **478 application + 31 browser/proxy tests passed (509 total; zero failures/skips)**. Eighteen new application cases cover removal/restoration, staff/PIN session revocation, permissions/provenance/CSRF, stale and concurrent requests, audit rollback, draft conflicts/locked repair, future generation and immutable publication/Signal/PDF history. Six Firefox cases exercise desktop/mobile confirmation, cancellation, keyboard submission, stale feedback, filters and restoration for both authorized roles. Application, proxy and browser images built successfully; Compose configuration and whitespace checks passed. Validation used disposable data; no services were deployed or restarted. Manual staff acceptance and the existing production operational gates remain separate.
+
+Initial v1.0.3 qualification/zone validation (before RP1/login refinements): **523 application tests passed in 188.62 s + 33 browser/proxy tests passed in 88.16 s (556 total; zero failures/skips)**. The populated upgrade/current restore and strengthened interrupted-migration schema rollback tests also passed separately (2 tests in 0.95 s). Forty-five new application cases and two desktop/mobile Firefox cases cover qualification dependencies, new/legacy CSV, private views/exports, label validation/authorization/snapshots, independent six-stage oracle and proof injection, stale commits, migration preservation/rollback and scale. Existing tests retain their invariants with renamed fields/version/vector assertions. An initial failed-migration test exposed exception-path pool cleanup; `migrations/env.py` now always disposes its engine, without suppressing warnings. All three v1.0.3 images built; Compose validation and `git diff --check` passed. No deployment service/volume or production backup was changed.
+
+The initial six-stage saved bounded scale run used **2 CPUs/768 MiB**, 100 volunteers/five Sundays, 20 normal generations and 100 operations from 20 volunteer/two staff sessions during a deliberately stale solve. All six objective proofs completed in 20/20; canonicalization completed in 19/20. Maximum request was 10.559 s, ordinary p95 0.238 s, RS+RT stage mean 0.024 s. The one canonical timeout returned FEASIBLE after six proven objectives, preserving the ten-second budget. These TestClient/real-worker measurements do not replace dedicated Debian/TLS/RSS acceptance. See the [feature amendment](docs/v1.0.3-qualification-zones.md#validation-evidence) for exact scope, raw artifact location, reproduction and remaining gates.
+
+Final combined v1.0.3 validation after RP1/login refinements: **567 application tests passed in 189.75 s + 35 browser/proxy tests passed in 95.50 s (602 total; zero failures/skips)**. Forty-four additional application cases and two desktop/mobile Firefox cases cover RP1, seven-stage proof/independent validation, historical six-stage results, unknown/inactive users, wrong passwords, MFA/recovery errors, CSRF expiry/retry, JSON/HTML negotiation, escaping, throttles and session boundaries. Separate test images built successfully; Compose and whitespace checks passed. Version is **1.0.3** and schema is **0006**. The local Docker testing deployment was subsequently updated and its backup, data preservation, HTTPS readiness and targeted smoke tests were verified.
+
+The RP1 bounded rerun also passed (1 test in 35.94 s): **20/20 seven-stage proofs, 19/20 canonicalizations**, maximum request 10.534 s, ordinary p95 0.298 s for 100 successful operations. The RP1 solve stage averaged 0.012 s (maximum 0.020 s). One canonical search exhausted the unchanged total deadline after all seven objective proofs and returned FEASIBLE correctly. Raw measurements are retained separately in ignored `test-results/v103-refinements-benchmark.json`; the initial six-stage artifact is preserved. This remains a local TestClient/worker benchmark, not production Debian/TLS/RSS acceptance.
 
 Maintain locks with disposable Python 3.13, compatible pip 25.2/pip-tools 7.5.3. Preserve pins unless deliberately upgrading; regenerate hashes and rerun both suites:
 

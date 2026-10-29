@@ -41,15 +41,15 @@ def test_atomic_responses_self_visibility_audit_and_counts(world, first, second,
 def test_dashboard_new_inactive_reactivated_qualified_and_staff_confirmation(world):
     person, _, day, link, client = setup(world)
     save(client, link, first=True, second=True)
-    other = create_person(world.client, "Synthetic qualified", restricted_qualified=True)
+    other = create_person(world.client, "Synthetic qualified", outside_available=True)
     response = post(world.client, f"/staff/dates/{day['id']}/availability/{other['id']}", expected_revision=0, service_1_available=True, service_2_available=False, confirmation_reason="Confirmed privately by this volunteer")
     assert response.status_code == 200
     count = detail(world.client, f"/staff/dates/{day['id']}")["counts"]
     assert count["first_qualified"] == 1 and count["second_qualified"] == 0 and count["both"] == 1 and count["first_only"] == 1
-    post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=person["revision"], display_name=person["display_name"], public_label="", active=False, restricted_qualified=False)
+    post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=person["revision"], display_name=person["display_name"], public_label="", active=False, outside_available=False)
     assert detail(world.client, f"/staff/dates/{day['id']}")["counts"]["active_total"] == 1
     assert client.get(f"/availability/{link}/mine").status_code == 401
-    post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=person["revision"]+1, display_name=person["display_name"], public_label="", active=True, restricted_qualified=False)
+    post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=person["revision"]+1, display_name=person["display_name"], public_label="", active=True, outside_available=False)
     assert detail(world.client, f"/staff/dates/{day['id']}")["counts"]["both"] == 1
     assert client.get(f"/availability/{link}/mine").status_code == 401
     create_person(world.client, "Synthetic newly active")
@@ -199,11 +199,11 @@ def test_expiry_rotation_and_session_revocation(world, state):
 
 def test_cross_identity_date_staff_access_csrf_and_data_minimization(world):
     person, pin, day, link, client = setup(world)
-    other = create_person(world.client, "Synthetic other private response", restricted_qualified=True)
+    other = create_person(world.client, "Synthetic other private response", outside_available=True)
     post(world.client, f"/staff/dates/{day['id']}/availability/{other['id']}", expected_revision=0, service_1_available=False, service_2_available=False, confirmation_reason="PRIVATE_CONFIRMATION_REASON")
     public = detail(client, f"/availability/{link}")
     assert all(set(p) == {"id","public_label"} for p in public["volunteers"])
-    assert "restricted_qualified" not in str(public) and "PRIVATE_CONFIRMATION_REASON" not in str(public)
+    assert "outside_available" not in str(public) and "PRIVATE_CONFIRMATION_REASON" not in str(public)
     assert set(detail(client, f"/availability/{link}/mine")) == {"local_date","public_label","service_1_label","service_2_label","response"}
     assert save(client, link, volunteer_id=other["id"]).status_code == 422
     assert client.get(f"/availability/{link}/mine?volunteer_id={other['id']}").status_code == 422

@@ -1,7 +1,7 @@
 name: church-security-scheduler
 x-app: &app
   build: .
-  image: church-security-scheduler:1.0.2
+  image: church-security-scheduler:1.0.3
   user: "10001:10001"
   read_only: true
   cap_drop: [ALL]
@@ -42,7 +42,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.caddy
-    image: church-security-scheduler-proxy:1.0.2
+    image: church-security-scheduler-proxy:1.0.3
     user: "10001:10001"
     read_only: true
     cap_drop: [ALL]
@@ -75,7 +75,7 @@ services:
     volumes: [database:/data, keys:/keys, backups:/backups]
     entrypoint: [python, -m, scheduler.manage]
   volume-init:
-    image: church-security-scheduler:1.0.2
+    image: church-security-scheduler:1.0.3
     profiles: [tools]
     user: "0:0"
     network_mode: none
@@ -99,7 +99,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.browser
-    image: church-security-scheduler-browser:1.0.2
+    image: church-security-scheduler-browser:1.0.3
     environment:
       APP_ORIGIN: https://localhost:8443
       TRUSTED_PROXIES: 127.0.0.1/32

@@ -53,7 +53,7 @@ def conflicts(snapshot, slots, rotations):
             local.add(("inactive", *key, person_id))
         if not person or person[f"service_{key[0]}_available"] is not True:
             local.add(("unavailable", *key, person_id))
-        if key[1] in (1, 2) and (not person or not person["restricted_qualified"]):
+        if key[1] in (1, 2) and (not person or not person["outside_available"]):
             local.add(("qualification", *key, person_id))
         errors.update(local)
         if local and s["locked"]:
@@ -78,7 +78,7 @@ def describe_conflict(error):
     return f"Service {error[1]}, position {error[2]}: " + {
         "inactive": "volunteer is inactive; clear or reassign this position.",
         "unavailable": "volunteer is unavailable or has no response; confirm availability or repair this position.",
-        "qualification": "current restricted qualification is required; clear or reassign this position.",
+        "qualification": "current Outside Available is required; clear or reassign this position.",
         "invalid_lock": "invalid locked assignment; explicitly unlock or repair before generation.",
     }[kind]
 
@@ -114,6 +114,12 @@ class Publication:
             names = {r["id"]: r["public_label"] for r in c.exec_driver_sql("SELECT id,public_label FROM volunteers").mappings()}
             data.update(metadata=json.loads(draft["solver_metadata"]) if draft and draft["solver_metadata"] else None,
                         diagnostics=diagnostics(snap, snap["slots"]), setup_confirmed=bool(settings["essentiality_confirmed"]))
+            metadata = data["metadata"] or {}
+            solved_epochs = metadata.get("input_epochs", {})
+            data["optimization_current"] = bool(draft and metadata.get("objectives") is not None
+                and all(k in metadata["objectives"] for k in ("RS", "RT", "RP1"))
+                and all(solved_epochs.get(k) == snap["input_epochs"][k] for k in ("roster_epoch", "config_epoch", "date_input_epoch"))
+                and solved_epochs.get("draft_revision", -1) + 1 == draft["draft_revision"])
             vac, rot = approvals(c, draft["id"], snap["slots"]) if draft else ({}, {})
             data["problems"] = [describe_conflict(e) for e in sorted(conflicts(snap, snap["slots"], rot))] if draft else []
             data["vacancy_approvals"], data["rotation_approvals"] = list(vac.values()), list(rot.values())
@@ -122,7 +128,7 @@ class Publication:
                 s.update(public_label=names.get(s["volunteer_id"]), vacancy_approved=(s["service_number"], s["position_number"]) in vac,
                          rotation_approved=s["volunteer_id"] in rot)
             data["idempotency_key"] = str(uuid.uuid4())
-            data["current_config"] = {k: settings[k] for k in ("service_1_label", "service_2_label", "service_1_time", "service_2_time")}
+            data["current_config"] = {k: settings[k] for k in ("service_1_label", "service_2_label", "service_1_time", "service_2_time", "inside_zone_label", "outside_zone_label")}
             data["current_config"]["positions"] = [dict(r) for r in c.exec_driver_sql("SELECT * FROM positions ORDER BY number").mappings()]
         return data
 
@@ -211,7 +217,7 @@ class Publication:
     def refresh(self, raw, csrf, date_id, expected):
         with self.db.transaction() as c:
             actor, day, settings, draft, snap = self.checked(c, raw, csrf, date_id, expected)
-            config = {k: settings[k] for k in ("service_1_label", "service_2_label", "service_1_time", "service_2_time")}
+            config = {k: settings[k] for k in ("service_1_label", "service_2_label", "service_1_time", "service_2_time", "inside_zone_label", "outside_zone_label")}
             config.update(timezone=day["timezone_snapshot"], positions=[dict(r) for r in c.exec_driver_sql("SELECT * FROM positions ORDER BY number").mappings()])
             now = self.flow.clock()
             for s in snap["slots"]:

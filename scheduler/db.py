@@ -8,7 +8,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, event
 
-HEAD = "0005_publication_guards"
+HEAD = "0006_qualification_zones"
 
 
 class Database:

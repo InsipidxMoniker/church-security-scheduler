@@ -119,7 +119,7 @@ def test_legacy_hash_only_pin_and_deactivation_do_not_lose_verification_or_displ
     assert reset.status_code == 200
     current_revision = reset.json()["revision"]
     for active in (False, True):
-        edited = post(world.client, path, expected_revision=current_revision, display_name=person["display_name"], public_label=person["public_label"], active=active, restricted_qualified=False)
+        edited = post(world.client, path, expected_revision=current_revision, display_name=person["display_name"], public_label=person["public_label"], active=active, outside_available=False)
         assert edited.status_code == 200
         current_revision = edited.json()["revision"]
         assert post(world.client, path + "/pin/view", expected_revision=current_revision).json()["pin"] == "0070"

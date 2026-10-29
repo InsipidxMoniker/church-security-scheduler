@@ -176,7 +176,7 @@ def test_negative_publication_validation_is_atomic(world, fault):
             c.exec_driver_sql("DELETE FROM slots WHERE service_number=1 AND position_number=8")
         if fault == "inactive": c.exec_driver_sql("UPDATE volunteers SET active=0")
         if fault == "qualification":
-            c.exec_driver_sql("UPDATE volunteers SET restricted_qualified=0")
+            c.exec_driver_sql("UPDATE volunteers SET outside_available=0")
             c.exec_driver_sql("UPDATE slots SET volunteer_id=NULL WHERE service_number=1")
             c.exec_driver_sql("UPDATE slots SET volunteer_id=? WHERE service_number=1 AND position_number=1", (people[0]["id"],))
         if fault == "unavailable": c.exec_driver_sql("UPDATE availability SET service_1_available=0,service_2_available=0")
@@ -228,7 +228,7 @@ def test_T25_T32_X12_amendment_fresh_approvals_and_historical_consistency(world)
     assert publish(world, day, key="amend").status_code == 409
     assert historical(world, day, first)["current"]
     p = detail(world.client, f"/staff/volunteers/{person['id']}")["person"]
-    assert post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=p["revision"], display_name="Renamed synthetic", public_label="Renamed synthetic", active=False, restricted_qualified=False).status_code == 200
+    assert post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=p["revision"], display_name="Renamed synthetic", public_label="Renamed synthetic", active=False, outside_available=False).status_code == 200
     assert review(world, day)["problems"]
     assert historical(world, day, first)["payload"] == original
     assert world.client.get(path + "/signal.txt").text == text
@@ -283,7 +283,7 @@ def test_X05_committed_input_change_wins_before_waiting_publication(world, input
                 c.exec_driver_sql("UPDATE availability SET service_1_available=0,service_2_available=0")
                 c.exec_driver_sql("UPDATE service_dates SET date_input_epoch=date_input_epoch+1")
             elif input_change == "roster":
-                c.exec_driver_sql("UPDATE volunteers SET restricted_qualified=0")
+                c.exec_driver_sql("UPDATE volunteers SET outside_available=0")
                 c.exec_driver_sql("UPDATE settings SET roster_epoch=roster_epoch+1")
             else:
                 c.exec_driver_sql("UPDATE settings SET config_epoch=config_epoch+1")
@@ -338,7 +338,7 @@ def test_X11_X14_safe_unicode_exports_no_private_data_or_resource_fetch(world, m
     day, people = prepare(world, 1)
     p = people[0]
     name = "Élodie <img src='https://invalid.example/secret'> & Ω Ж"
-    assert post(world.client, f"/staff/volunteers/{p['id']}", expected_revision=1, display_name=name, public_label=name, active=True, restricted_qualified=True).status_code == 200
+    assert post(world.client, f"/staff/volunteers/{p['id']}", expected_revision=1, display_name=name, public_label=name, active=True, outside_available=True).status_code == 200
     assert approve(world, day, reason="DO-NOT-EXPORT-private-reason").status_code == 200
     version = publish(world, day).json()["version_id"]
     path = f"/staff/dates/{day['id']}/publications/{version}"

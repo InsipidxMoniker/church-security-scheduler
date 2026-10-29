@@ -31,7 +31,7 @@ def test_firefox_staff_setup_and_mobile_availability(stack):
         staff.get_by_role("link",name="Volunteer roster",exact=True).click()
         staff.get_by_role("link",name="Add volunteer",exact=True).click()
         staff.get_by_label("Display name",exact=True).fill("Synthetic Browser Volunteer")
-        staff.get_by_label("Positions 1 and 2 qualification").select_option("true")
+        staff.get_by_label("Outside Available").select_option("true")
         staff.get_by_role("button",name="Save volunteer",exact=True).click()
         staff.get_by_role("button",name="Issue PIN",exact=True).click()
         pin=staff.get_by_test_id("generated-pin").inner_text().strip()

@@ -25,8 +25,8 @@ def test_mutations_require_csrf_origin_and_authorized_actor(world):
     preview=post(world.client,"/staff/volunteers/import/preview",csv_text="display_name,restricted_qualified\nOther,true").json()["preview"]
     cases=[
         ("/staff/settings",settings_payload(2)),
-        ("/staff/volunteers",{"display_name":"Other","active":True,"restricted_qualified":False}),
-        (f"/staff/volunteers/{person['id']}",{"expected_revision":person["revision"],"display_name":"Changed","active":True,"restricted_qualified":True}),
+        ("/staff/volunteers",{"display_name":"Other","active":True,"outside_available":False}),
+        (f"/staff/volunteers/{person['id']}",{"expected_revision":person["revision"],"display_name":"Changed","active":True,"outside_available":True}),
         (f"/staff/volunteers/{person['id']}/pin",{"expected_revision":person["revision"]}),
         (f"/staff/volunteers/{person['id']}/clear-block",{}),
         ("/staff/volunteers/import/preview",{"csv_text":"display_name,restricted_qualified\nOther,true"}),
@@ -120,7 +120,7 @@ def test_pin_reset_rejects_concurrent_roster_edit_after_hashing(world,monkeypatc
     with ThreadPoolExecutor(1) as pool:
         pending=pool.submit(post,world.client,f"/staff/volunteers/{person['id']}/pin",expected_revision=person["revision"])
         assert held.wait(5)
-        changed=post(world.client,f"/staff/volunteers/{person['id']}",expected_revision=person["revision"],display_name="New confirmed name",public_label="",active=True,restricted_qualified=True)
+        changed=post(world.client,f"/staff/volunteers/{person['id']}",expected_revision=person["revision"],display_name="New confirmed name",public_label="",active=True,outside_available=True)
         assert changed.status_code==200
         release.set()
         assert pending.result().status_code==409
