@@ -96,7 +96,7 @@ def test_zone_admin_only_refresh_snapshots_historical_exports(world):
     assert generate(world, day).status_code == 200
     assert world.client.get(root + "/signal.txt").text == old_text
     text = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(old_pdf)).pages)
-    assert "Inside" in text and "Outside" in text
+    assert "Inside" not in text and "Outside" not in text
     with world.db.engine.connect() as c:
         after = dict(c.exec_driver_sql("SELECT * FROM schedule_versions WHERE status='published'").mappings().one())
         assert after == published

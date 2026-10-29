@@ -105,7 +105,7 @@ def test_mobile_health_keyboard_navigation_and_expired_session(stack, role):
         assert page.get_by_text("No application-managed backup recorded.", exact=True).is_visible()
         assert page.get_by_text("PBS backup status is not monitored", exact=False).is_visible()
         assert page.locator("body").evaluate("el => el.scrollWidth <= window.innerWidth")
-        assert context.request.get(ORIGIN + "/staff/health", headers={"Accept": "application/json"}).json()["version"] == "1.0.3"
+        assert context.request.get(ORIGIN + "/staff/health", headers={"Accept": "application/json"}).json()["version"] == "1.0.4"
         if role == "scheduler":
             assert context.request.get(ORIGIN + "/staff/users", headers={"Accept": "text/html"}).status == 403
         db = Database(stack.test_database)

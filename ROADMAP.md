@@ -1,6 +1,6 @@
 # Church Security Scheduler — Development Roadmap
 
-**Current version:** v1.0.3
+**Current version:** v1.0.4
 
 **Baseline:** v1.0.0 (initial private, self-hosted MVP)  
 **Status:** Proposed roadmap; not an implementation specification or an approval to change existing scheduling rules  

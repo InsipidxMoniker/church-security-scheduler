@@ -1,6 +1,6 @@
 # Church Security Scheduler
 
-Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current version: **v1.0.3**. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md), the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md) and the [approved v1.0.3 feature amendment](docs/v1.0.3-qualification-zones.md).
+Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current version: **v1.0.4**. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md), the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md) and the [approved v1.0.3 feature amendment](docs/v1.0.3-qualification-zones.md).
 
 ## Features and boundaries
 
@@ -19,7 +19,7 @@ There is no public schedule viewer, automatic messaging, volunteer account syste
 
 ## Stack and requirements
 
-Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.3`.
+Python 3.13, FastAPI/Uvicorn (one worker), Jinja server-rendered forms and same-origin JSON, SQLAlchemy/Alembic, SQLite, OR-Tools CP-SAT, ReportLab and bundled DejaVu. No JavaScript framework/HTMX is used. Python dependencies are hash-pinned; Python/Caddy base images are digest-pinned. Existing application test dependencies remain in the app image; the QR decoder is browser-test-only. `scheduler.__version__`, FastAPI metadata and authenticated staff health report `1.0.4`.
 
 Target: one Debian VM on Proxmox with local SSD-backed Docker volumes. Acceptance baseline: **2 vCPU / 2 GiB RAM**, a measurement target, not a proven capacity guarantee. Compose limits app to 2 CPUs/768 MiB and proxy to 128 MiB. Do not use NFS/SMB for live SQLite. Reserve several GiB for images/build cache, plus live DB/WAL, migration copies and 30 daily backups; monitor actual growth/free space.
 
@@ -35,7 +35,7 @@ Run commands from the checkout, stopping on failure. Key/bootstrap are one-time 
 git clone https://github.com/InsipidxMoniker/church-security-scheduler.git
 cd church-security-scheduler
 git fetch --tags origin
-git switch --detach v1.0.3
+git switch --detach v1.0.4
 umask 077
 cp .env.example .env
 chmod 600 .env
@@ -43,7 +43,7 @@ mkdir -p recovery
 chmod 700 recovery
 ```
 
-Use private GitHub authentication without embedding tokens in the clone URL. Check out the v1.0.3 release tag for a fresh installation. Use the upgrade procedure below for an existing database.
+Use private GitHub authentication without embedding tokens in the clone URL. Check out the v1.0.4 release tag for a fresh installation. Use the upgrade procedure below for an existing database.
 
 Edit `.env`. Reusable remote Tunnel example:
 
@@ -182,7 +182,7 @@ Both staff roles edit Outside Available and Rifle Qualified. To remove Outside A
 
 At fixed E/O/RS/RT, **RP1** prefers the Rifle Qualified volunteer at Position 1 when only one can fill Positions 1/2 in a service. Another eligible Outside Available volunteer may fill Position 2; two rifles may fill both. RP1 is soft, subordinate to coverage/rifle distribution/total, and ahead of B/U. A standard-volunteer lock or intentional vacancy at Position 1 is binding, so the rifle can use Position 2. Earlier six-stage results are marked historical; regenerate explicitly to measure/prove RP1. This refinement needs no additional migration or version bump.
 
-Only Administrators edit the Inside/Outside display labels in System configuration. Labels are trimmed, nonblank, at most 100 characters, free of control characters and distinct ignoring case. Renaming advances configuration/settings revisions; existing drafts require explicit refresh with a diff. Existing date timezones and published label snapshots remain unchanged. New publications/exports use their captured labels; older payloads retain their historical output representation.
+Only Administrators edit the Inside/Outside display labels in System configuration. Labels are trimmed, nonblank, at most 100 characters, free of control characters and distinct ignoring case. Renaming advances configuration/settings revisions; existing drafts require explicit refresh with a diff. Existing date timezones and published label snapshots remain unchanged. Zone labels remain available in staff drafts/configuration. Published HTML, Signal text and PDFs omit zone labels for all versions, including historical publications and amendments. Stored payloads and hashes retain their authoritative zone data.
 
 **Issue/Reset PIN** accepts random/custom digits. **View PIN** is an audited Administrator POST that decrypts/checks the copy against the hash. Reset revokes sessions/personal block, retaining responses. Staff can redisplay the current Sunday link. Replacing/revoking it revokes old links/sessions without deleting responses. Share PINs privately, never in Signal groups, CSV, URLs or reasons.
 
@@ -220,6 +220,24 @@ docker compose up -d app proxy
 `down` preserves volumes; **never use `down -v` on a deployment**. Readiness checks DB/schema; liveness is minimal. `unless-stopped` restarts exited processes, not a process merely marked unhealthy. Proxy waits for healthy app startup and allows 30 seconds for upstream response headers. Access logs are disabled and errors sanitized. Keep HTTP/SQL debug tracing off with real credentials/token URLs.
 
 ## Updates and rollback limits
+
+### v1.0.3 to v1.0.4
+
+This presentation-only patch requires no migration, configuration changes or credential resets; schema remains `0006_qualification_zones`. Published HTML, Signal text and PDF output omit zone names even for old snapshots. Stored payloads and hashes remain unchanged; internal staff drafts retain configured labels. Existing v1.0.3 code/images remain schema-compatible for rollback.
+
+Record previous image/commit IDs and take a uniquely named verified backup before switching to the v1.0.4 release. Preserve the Compose project, volumes, original key and Caddy certificates. Rebuild and restart using the existing checkout:
+
+```sh
+docker compose config --quiet
+docker compose build app proxy
+docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.4-YYYYMMDDTHHMMSS.sqlite
+docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.4-YYYYMMDDTHHMMSS.sqlite
+docker compose up -d --wait --wait-timeout 90 app proxy
+```
+
+Verify health version 1.0.4, a published page, Signal/PDF exports and internal draft labels. Do not regenerate, republish or refresh drafts as part of this upgrade. No database migration command is needed. Never reset volumes or run `down -v`.
+
+v1.0.4 validation: **568 application + 35 browser/proxy tests passed (603 total, zero failures/skips)**. Local Docker is running v1.0.4 with preserved data/key/CA and verified HTTPS readiness. Actual stored publications passed read-only HTML/Signal/PDF rendering checks inside the running app container; internal draft labels remain present. See [patch notes and verification details](docs/v1.0.4-publication-display.md).
 
 Deploy reviewed tags, preserving checkout path, Compose project, `.env`, volumes and original key. Default volume names start `church-security-scheduler_`; changing projects creates different volumes and can look like lost data. Never bootstrap/init-key for upgrades.
 

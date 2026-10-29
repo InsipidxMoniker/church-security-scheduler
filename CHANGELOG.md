@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.4 — Hide Zone Labels in Finalized Schedules
+
+- Remove configured zone labels from published detail pages, Signal-ready text and PDF exports for current, historical and amended publications. Preserve position numbers, volunteer names, service labels/times, dates, version indicators, vacancies and approval/exception markers.
+- Keep zone labels in staff drafts, configuration and internal scheduling. Stored publication payloads/hashes, assignments, schema, solver, qualifications and authorization are unchanged. No migration or configuration change is required.
+- Restore the PDF position column to its number-only width and share the number-only position formatter between distribution exports.
+- Validation: **568 application + 35 browser/proxy tests passed (603 total; zero failures/skips)**. App/proxy/browser images built; local Compose app/proxy run v1.0.4 with schema 0006. All four existing local publications rendered without labels in HTML/Signal/PDF inside the running app container; all database table fingerprints, encryption key and CA certificate were preserved. Internal draft template labels were verified with live configuration (no stored local draft); automated tests cover actual draft pages. No production connection, migration or release action was performed.
+
 ## v1.0.3 — Zone Labels and Rifle Qualification
 
 - Add Administrator-configurable Inside/Outside display labels with validation, settings concurrency/audit, draft configuration epochs and explicit refresh/diff. Fixed position mapping, rotation identities and existing date timezones remain unchanged. Capture labels in new publication payloads; historical payloads and their output representation remain intact.

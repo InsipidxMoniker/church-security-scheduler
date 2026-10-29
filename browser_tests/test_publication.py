@@ -22,11 +22,12 @@ def test_publish_history_signal_pdf_amendment_phone_and_stale_review(stack):
             response = context.request.post(ORIGIN + path, data={"csrf":csrf, **values}, headers={"Origin":ORIGIN})
             assert response.status == 200, response.text()
             return response.json()
-        api("/staff/settings", expected_revision=1, timezone="America/Los_Angeles", service_1_label="First service", service_2_label="Second service", essentiality_confirmed=True, **{f"essential_{p}":True for p in range(1,9)})
+        api("/staff/settings", expected_revision=1, timezone="America/Los_Angeles", service_1_label="First service", service_2_label="Second service", inside_zone_label="INTERIOR UNIQUE", outside_zone_label="EXTERIOR UNIQUE", essentiality_confirmed=True, **{f"essential_{p}":True for p in range(1,9)})
         day = api("/staff/dates", local_date="2026-10-25")
         draft = ORIGIN + f"/staff/dates/{day['id']}/draft"
         page.goto(draft)
         page.get_by_role("button", name="Generate draft", exact=True).click()
+        assert "INTERIOR UNIQUE" in page.content() and "EXTERIOR UNIQUE" in page.content()
         other = context.new_page()
         other.goto(draft)
         page.get_by_role("button", name="Regenerate draft", exact=True).click()
@@ -45,6 +46,7 @@ def test_publish_history_signal_pdf_amendment_phone_and_stale_review(stack):
         page.wait_for_url("**/publications/*")
         first_url = page.url
         assert "CURRENT" in page.content()
+        assert "INTERIOR UNIQUE" not in page.content() and "EXTERIOR UNIQUE" not in page.content()
         output = page.get_by_label("Signal-ready text").input_value()
         assert "Version 1" in output and "approved essential vacancy" in output
         assert "Private browser confirmation" not in output
@@ -64,8 +66,10 @@ def test_publish_history_signal_pdf_amendment_phone_and_stale_review(stack):
         page.get_by_role("checkbox").check()
         page.get_by_role("button", name="Confirm publication", exact=True).click()
         assert "Version 2" in page.content() and "AMENDED" in page.content()
+        assert "INTERIOR UNIQUE" not in page.content() and "EXTERIOR UNIQUE" not in page.content()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         page.goto(first_url)
         assert page.get_by_role("alert").is_visible()
+        assert "INTERIOR UNIQUE" not in page.content() and "EXTERIOR UNIQUE" not in page.content()
         assert "SUPERSEDED" in page.get_by_label("Signal-ready text").input_value()
         context.close()
