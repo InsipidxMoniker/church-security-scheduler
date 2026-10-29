@@ -4,7 +4,10 @@
 <label>Display name<input name="display_name" maxlength="100" value="{{ person.display_name if person else '' }}" required></label>
 <label>Public label (blank uses name)<input name="public_label" maxlength="100" value="{{ person.public_label if person else '' }}"></label>
 <label>Status<select name="active"><option value="true" {% if not person or person.active %}selected{% endif %}>Active</option><option value="false" {% if person and not person.active %}selected{% endif %}>Inactive</option></select></label>
-<label>Positions 1 and 2 qualification<select name="restricted_qualified"><option value="false" {% if not person or not person.restricted_qualified %}selected{% endif %}>Not restricted-qualified</option><option value="true" {% if person and person.restricted_qualified %}selected{% endif %}>Restricted-qualified</option></select></label>
+<label for="outside-available">Outside Available</label><select id="outside-available" name="outside_available"><option value="false" {% if not person or not person.outside_available %}selected{% endif %}>No</option><option value="true" {% if person and person.outside_available %}selected{% endif %}>Yes</option></select>
+<p>Required for Positions 1 and 2 only. Positions 3 and 8 do not require this qualification.</p>
+<label for="rifle-qualified">Rifle Qualified</label><select id="rifle-qualified" name="rifle_qualified"><option value="false" {% if not person or not person.rifle_qualified %}selected{% endif %}>No</option><option value="true" {% if person and person.rifle_qualified %}selected{% endif %}>Yes (requires Outside Available)</option></select>
+<p>To remove Outside Available from a Rifle Qualified volunteer, first set Rifle Qualified to No and save, then remove Outside Available. An inconsistent pair is rejected.</p>
 <button>Save volunteer</button></form>
 {% if person and person.active %}<a class="button" href="/staff/volunteers/{{ person.id }}/delete">Delete</a>{% endif %}
 {% if person %}<h2>Personal PIN</h2><p>{{ 'PIN provisioned' if person.has_pin else 'No PIN provisioned' }}. Issuing or resetting a PIN revokes existing volunteer sessions.</p>{% if role == 'admin' %}

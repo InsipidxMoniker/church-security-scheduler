@@ -1,13 +1,25 @@
 # Changelog
 
-## v1.0.2 — Staff and Volunteer Removal (unreleased)
+## v1.0.3 — Zone Labels and Rifle Qualification
+
+- Add Administrator-configurable Inside/Outside display labels with validation, settings concurrency/audit, draft configuration epochs and explicit refresh/diff. Fixed position mapping, rotation identities and existing date timezones remain unchanged. Capture labels in new publication payloads; historical payloads and their output representation remain intact.
+- Rename Restricted to Outside Available without changing eligibility: only Positions 1/2 require it. Add Rifle Qualified as a database/API-enforced subset. Both staff roles may edit; clear and save Rifle Qualified before removing Outside Available. Qualification edits retain roster epochs/audit, hard-conflict repair and stale-request rejection; rifle-only edits mark earlier optimization inputs outdated without invalidating legal assignments.
+- Optimize lexicographically **E > O > RS > RT > RP1 > B > U > original Sunday-specific canonical tie-break**. Distribute rifle assignments across services before maximizing their total at Positions 1/2, then prefer rifles at Position 1. Extend independent scoring, proof metadata validation and staff diagnostics. Retain the single ten-second solve budget, isolated worker and concurrency gate; no new hard rifle requirement or publication approval. Earlier six-stage results remain historical until explicit regeneration.
+- Render incorrect browser login credentials inline on the styled login page with generic wording, escaped username, empty password and fresh preauth CSRF. Invalid MFA/recovery codes remain on the MFA form with empty code fields; a valid existing pending session is required. Explicit HTML only: retain JSON/API error contracts, status codes, CSRF/provenance, throttles/Retry-After and session/MFA security. Add desktop/mobile Firefox retries and authentication/security regression coverage.
+- Support `display_name,outside_available,rifle_qualified` CSV with atomic validation/import; explicitly identify and map the legacy two-column format. Keep qualifications/diagnostics private to staff and out of Signal/PDF. Give qualification selects explicit accessible labels and return failed create requests to the new-volunteer form.
+- Add forward-only `0006_qualification_zones`: rename the eligibility column in place, default all rifle values false, enforce the dependent boolean CHECK, add default zone labels and stale preexisting drafts without rewriting them. Preserve identities, security credentials, references, approvals and publications. Ensure Alembic disposes its pool even after a migration exception. Upgrade/rollback requires verified backups and the original key; no automatic downgrade. See [upgrade instructions](README.md#v102-to-v103) and the [feature amendment and measurements](docs/v1.0.3-qualification-zones.md).
+- Initial qualification/zone validation (before RP1/login refinements): **523 application + 33 browser/proxy tests passed (556 total; zero failures/skips)** in rebuilt v1.0.3 images; the strengthened migration schema-rollback checks also passed separately (2 tests). Application/proxy/browser builds, Compose validation and whitespace checks passed. The saved 2-CPU/768-MiB 100-volunteer/five-Sunday benchmark completed 20/20 six-stage proofs, 19/20 canonicalizations, maximum request 10.559 s and ordinary-request p95 0.238 s for 100 operations from 20 volunteer/two staff sessions. One canonical search reached the unchanged deadline and returned honest FEASIBLE metadata. Dedicated production Debian/TLS/RSS and existing operational acceptance remain unperformed.
+- Final combined v1.0.3 validation after RP1/login refinements: **567 application tests passed in 189.75 s + 35 browser/proxy tests passed in 95.50 s (602 total; zero failures/skips)**. Includes independent seven-stage oracle/canonical vectors, both-service Position 1 preference and lock fallback, stage/deadline injection, historical six-stage review, native desktop/mobile unknown-user/password/MFA retries, JSON negotiation, escaping, session boundaries, CSRF and throttle preservation. Isolated application/browser images built, Compose validation and whitespace checks passed. The local testing deployment was subsequently updated and verified.
+- The separate 2-CPU/768-MiB RP1 benchmark passed: 100 volunteers/five Sundays, 20/20 seven-stage proofs, 19/20 canonicalizations, maximum request 10.534 s, ordinary p95 0.298 s for 100 operations, and RP1 stage mean 0.012 s. The one canonical timeout remains an honestly marked FEASIBLE result after seven proofs; the ten-second budget was not increased. Preserve both initial and refinement measurement artifacts.
+
+## v1.0.2 — Staff and Volunteer Removal
 
 - Add deliberate named Delete confirmation dialogs beside staff account controls and volunteer Edit controls, with success/error feedback and desktop/mobile keyboard support. GET only displays confirmation; POST requires authenticated permission, same-origin provenance, CSRF, explicit confirmation and the current revision.
 - Reuse reversible deactivation: revoke staff/PIN sessions immediately, retain credentials and historical references, and provide Active/Inactive/All filters with restoration through existing edit forms. Administrators remove staff; both staff roles remove volunteers. Prevent signed-in staff self-removal and removal of the last active Administrator, including through the existing access form.
 - Retain inactive volunteer assignments as visible draft conflicts that block publication. Preserve roster epochs, approval invalidation, locked-assignment and incremental repair behavior. Exclude inactive volunteers from active lists/counts, public PIN selection and future scheduling eligibility; preserve published snapshots, attribution and historical Signal/PDF names.
 - Reuse transactional `staff.access_changed` and `roster.updated` audits with actor, target, UTC event time and before/after status. Reject stale/duplicate requests without overwriting newer edits; roll back deactivation and revocation together if auditing fails.
 - Add focused removal, authorization, concurrency, authentication, publication/export and Firefox regressions. No migration, dependency, solver-priority, infrastructure or roadmap change. Rebuild images for the upgrade; retain existing volumes, encryption key and credentials. See [upgrade guidance](README.md#v101-to-v102).
-- Validated **478 application + 31 browser/proxy tests (509 total, zero failures/skips)**, application/proxy/browser image builds, Compose configuration and whitespace checks. New coverage includes 18 application cases and six desktop/mobile Firefox cases. No merge, tag, release or deployment was performed.
+- Validated **478 application + 31 browser/proxy tests (509 total, zero failures/skips)**, application/proxy/browser image builds, Compose configuration and whitespace checks. New coverage includes 18 application cases and six desktop/mobile Firefox cases.
 
 ## v1.0.1 — Authentication and health usability
 
@@ -21,15 +33,13 @@
 
 Keep the existing checkout path, Compose project, `.env`, database/key volumes and Caddy CA volumes. This patch requires **no database migration, environment changes, key generation, administrator recreation or PIN reset**. Stop on any command failure; never use `docker compose down -v`.
 
-For a released deployment, first record the previous commit/image IDs and secure the original key/configuration under the existing backup process. After owner approval and creation of the v1.0.1 tag, use a clean checkout:
+For a released deployment, first record the previous commit/image IDs and secure the original key/configuration under the existing backup process. Use a clean checkout:
 
 ```sh
 git status --short
 git fetch origin --tags
 git switch --detach v1.0.1
 ```
-
-For local pre-release testing, remain on the reviewed `codex/v1.0.1-auth-health` working tree instead; do not switch away from uncommitted changes or require a release tag.
 
 Build before restarting. Replace `YYYYMMDDTHHMMSS` with a unique timestamp in both backup commands; the backup tool refuses to overwrite an existing file:
 

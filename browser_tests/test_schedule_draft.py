@@ -31,7 +31,7 @@ def test_mobile_and_desktop_draft_generation_review_and_conflict(stack):
         api("/staff/settings", expected_revision=1, timezone="America/Los_Angeles", service_1_label="First service", service_2_label="Second service",
             essentiality_confirmed=True, **{f"essential_{p}": p != 8 for p in range(1, 9)})
         day = api("/staff/dates", local_date="2026-10-25")
-        people = [api("/staff/volunteers", display_name=f"Synthetic draft {i}", public_label="", active=True, restricted_qualified=i < 3) for i in range(7)]
+        people = [api("/staff/volunteers", display_name=f"Synthetic draft {i}", public_label="", active=True, outside_available=i < 3) for i in range(7)]
         for person in people:
             api(f"/staff/dates/{day['id']}/availability/{person['id']}", expected_revision=0, service_1_available=True,
                 service_2_available=True, confirmation_reason="Confirmed synthetic fixture")

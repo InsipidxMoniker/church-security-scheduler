@@ -101,7 +101,7 @@ def invalidate_ineligible_approvals(c, person_id, now):
         "JOIN volunteers p ON p.id=r.volunteer_id LEFT JOIN availability a ON a.date_id=r.date_id AND a.volunteer_id=p.id "
         "WHERE v.status='draft' AND r.volunteer_id=? AND r.invalidated_at IS NULL AND "
         "(p.active=0 OR coalesce(a.service_1_available,0)=0 OR coalesce(a.service_2_available,0)=0 OR "
-        "(p.restricted_qualified=0 AND (r.first_position IN (1,2) OR r.second_position IN (1,2))))", (person_id,))]
+        "(p.outside_available=0 AND (r.first_position IN (1,2) OR r.second_position IN (1,2))))", (person_id,))]
     for approval_id in invalid:
         c.exec_driver_sql("UPDATE rotation_approvals SET invalidated_at=? WHERE id=?", (now, approval_id))
         audit(c, "approval.invalidated", approval_id, details={"cause": "live eligibility changed", "volunteer_id": person_id})
@@ -114,22 +114,22 @@ class Generation:
 
     def capture(self, c, date_id):
         day = self.flow.date_row(c, date_id)
-        settings = row(c, "SELECT config_epoch,roster_epoch,service_1_label,service_2_label,service_1_time,service_2_time,essentiality_confirmed FROM settings WHERE id=1")
+        settings = row(c, "SELECT config_epoch,roster_epoch,inside_zone_label,outside_zone_label,service_1_label,service_2_label,service_1_time,service_2_time,essentiality_confirmed FROM settings WHERE id=1")
         draft = row(c, "SELECT * FROM schedule_versions WHERE date_id=? AND status='draft'", (date_id,))
         if draft:
             config = json.loads(draft["config_snapshot"])
             slots = [dict(r) for r in c.exec_driver_sql("SELECT service_number,position_number,volunteer_id,slot_revision,locked,zone,essential FROM slots WHERE version_id=? ORDER BY service_number,position_number", (draft["id"],)).mappings()]
         else:
-            config = {k: settings[k] for k in ("service_1_label", "service_2_label", "service_1_time", "service_2_time")}
+            config = {k: settings[k] for k in ("service_1_label", "service_2_label", "service_1_time", "service_2_time", "inside_zone_label", "outside_zone_label")}
             config["timezone"] = day["timezone_snapshot"]
             config["positions"] = [dict(r) for r in c.exec_driver_sql("SELECT * FROM positions ORDER BY number").mappings()]
             slots = [{"service_number": s, "position_number": p, "volunteer_id": None, "slot_revision": 0,
                       "locked": False, "zone": config["positions"][p-1]["zone"], "essential": bool(config["positions"][p-1]["essential"])} for s, p in SLOT_KEYS]
         volunteers = [dict(r) for r in c.exec_driver_sql(
-            "SELECT v.id,v.active,v.restricted_qualified,a.service_1_available,a.service_2_available FROM volunteers v "
+            "SELECT v.id,v.active,v.outside_available,v.rifle_qualified,a.service_1_available,a.service_2_available FROM volunteers v "
             "LEFT JOIN availability a ON a.volunteer_id=v.id AND a.date_id=? ORDER BY v.id", (date_id,)).mappings()]
         for v in volunteers:
-            for field in ("active", "restricted_qualified", "service_1_available", "service_2_available"):
+            for field in ("active", "outside_available", "rifle_qualified", "service_1_available", "service_2_available"):
                 if v[field] is not None:
                     v[field] = bool(v[field])
         expected = {"draft_id": draft["id"] if draft else "", "draft_revision": draft["draft_revision"] if draft else 0,
@@ -204,9 +204,18 @@ class Generation:
             values = objective_values(snapshot, assignments)
             if conflicts or values != metadata.get("objectives"):
                 raise ValueError("Independent validation")
-            if status == "OPTIMAL" and (metadata.get("completed_stages") != ["E", "O", "B", "U"] or not metadata.get("canonicalization_complete")):
+            sequence = ["E", "O", "RS", "RT", "RP1", "B", "U"]
+            completed = metadata.get("completed_stages")
+            if not isinstance(completed, list) or completed != sequence[:len(completed)]:
+                raise ValueError("Invalid proof sequence")
+            stages = metadata.get("stages", [])
+            for index, stage in enumerate(completed):
+                proof = stages[index]
+                if proof.get("stage") != stage or proof.get("status") != "OPTIMAL" or proof.get("value") != values[stage]:
+                    raise ValueError("Invalid objective proof metadata")
+            if status == "OPTIMAL" and (completed != sequence or not metadata.get("canonicalization_complete")):
                 raise ValueError("False optimal status")
-        except (TypeError, KeyError, ValueError):
+        except (TypeError, KeyError, ValueError, IndexError):
             logger.error("Schedule generation independent validation failed")
             raise Problem(503, "Invalid solver result; draft unchanged") from None
         with self.db.transaction() as c:

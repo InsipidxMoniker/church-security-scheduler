@@ -39,7 +39,7 @@ def test_invalid_locks_block_without_approvals_waiving_rules(kind):
     if kind == "inactive": data["volunteers"][0]["active"] = False
     if kind == "missing": data["volunteers"].pop(0)
     if kind == "unavailable": data["volunteers"][0]["service_1_available"] = False
-    if kind == "unqualified": data["volunteers"][0]["restricted_qualified"] = False
+    if kind == "unqualified": data["volunteers"][0]["outside_available"] = False
     if kind == "same_zone": data["slots"][8].update(locked=True, volunteer_id=data["volunteers"][0]["id"])
     if kind == "duplicate": data["slots"][1].update(locked=True, volunteer_id=data["volunteers"][0]["id"])
     result = solve(data)
@@ -63,6 +63,7 @@ def test_full_model_generated_inputs(seed):
     for v in data["volunteers"]:
         v.update(active=randomizer.choice([True, True, False]), service_1_available=randomizer.choice([None, False, True]),
                  service_2_available=randomizer.choice([None, False, True]))
+        v["rifle_qualified"] = v["outside_available"] and randomizer.choice([True, False])
     first = solve(data)
     assert first["metadata"]["status"] == "OPTIMAL"
     independent_check(data, first["assignments"])
@@ -85,6 +86,7 @@ def test_exhaustive_independent_oracle_all_objectives_and_vector(seed):
     for v in data["volunteers"]:
         v["service_1_available"] = rng.choice([True, True, False, None])
         v["service_2_available"] = rng.choice([True, True, False, None])
+        v["rifle_qualified"] = v["outside_available"] and rng.choice([True, False])
     winner, legal = exhaustive_oracle(data)
     actual = solve(data)
     assert actual["metadata"]["status"] == "OPTIMAL"
@@ -129,7 +131,7 @@ def status_factory(statuses):
     ([cp_model.UNKNOWN], [], "UNKNOWN/TIMEOUT"),
     ([cp_model.MODEL_INVALID], [], "MODEL_INVALID"),
     ([cp_model.INFEASIBLE], [], "INFEASIBLE"),
-    ([cp_model.OPTIMAL]*4 + [cp_model.UNKNOWN], ["E", "O", "B", "U"], "FEASIBLE"),
+    ([cp_model.OPTIMAL]*7 + [cp_model.UNKNOWN], ["E", "O", "RS", "RT", "RP1", "B", "U"], "FEASIBLE"),
 ])
 def test_honest_stage_status_and_incumbent_retention(statuses, completed, status):
     data = snapshot(3, 1)
@@ -170,7 +172,7 @@ def test_essential_coverage_beats_optional_stability_and_both_preference():
     expected, _ = exhaustive_oracle(data)
     result = solve(data)
     assert result["assignments"] == expected
-    assert result["metadata"]["objectives"] == {"E": 1, "O": 0, "B": 0, "U": 0}
+    assert result["metadata"]["objectives"] == {"E": 1, "O": 0, "RS": 0, "RT": 0, "RP1": 0, "B": 0, "U": 0}
 
 
 def test_optional_coverage_beats_stability_and_both_is_maximized_at_equal_coverage():
@@ -182,7 +184,7 @@ def test_optional_coverage_beats_stability_and_both_is_maximized_at_equal_covera
     result = solve(data)
     expected, _ = exhaustive_oracle(data)
     assert result["assignments"] == expected
-    assert result["metadata"]["objectives"] == {"E": 0, "O": 4, "B": 1, "U": 0}
+    assert result["metadata"]["objectives"] == {"E": 0, "O": 4, "RS": 0, "RT": 0, "RP1": 0, "B": 1, "U": 0}
 
 
 def test_model_invalid_snapshot_and_normalized_uuid_hash():

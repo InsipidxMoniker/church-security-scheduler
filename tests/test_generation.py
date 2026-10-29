@@ -21,7 +21,7 @@ def initial(world, count=8):
     sign_in(world)
     assert post(world.client, "/staff/settings", **settings_payload()).status_code == 200
     day = open_date(world.client)
-    people = [create_person(world.client, f"Synthetic solver {i}", restricted_qualified=i < 4) for i in range(count)]
+    people = [create_person(world.client, f"Synthetic solver {i}", outside_available=i < 4) for i in range(count)]
     for p in people:
         response = post(world.client, f"/staff/dates/{day['id']}/availability/{p['id']}", expected_revision=0,
                         service_1_available=True, service_2_available=True, confirmation_reason="Synthetic volunteer confirmed")
@@ -88,7 +88,7 @@ def test_empty_draft_conservative_diagnostics_and_stale_form(world):
     result = review(world, day)
     assert all(s["volunteer_id"] is None for s in result["slots"])
     assert len(result["diagnostics"]["vacancies"]) == 16
-    assert result["metadata"]["objectives"] == {"E": 0, "O": 0, "B": 0, "U": 0}
+    assert result["metadata"]["objectives"] == {"E": 0, "O": 0, "RS": 0, "RT": 0, "RP1": 0, "B": 0, "U": 0}
     assert "different placement" in result["diagnostics"]["explanation"]
     before = database_state(world)
     assert generate(world, day, expected).status_code == 409
@@ -160,7 +160,7 @@ def test_eligibility_changes_permanently_invalidate_pair_approval(world, change)
     else:
         p = people[0]
         assert post(world.client, f"/staff/volunteers/{p['id']}", expected_revision=p["revision"], display_name=p["display_name"], public_label=p["public_label"],
-                    active=change != "deactivation", restricted_qualified=change != "qualification").status_code == 200
+                    active=change != "deactivation", outside_available=change != "qualification").status_code == 200
     assert database_state(world)["slots"] == before
     with world.db.engine.connect() as c:
         assert c.exec_driver_sql("SELECT invalidated_at FROM rotation_approvals WHERE id='test-pair'").scalar() is not None
@@ -405,7 +405,7 @@ def test_real_volunteer_session_cannot_access_drafts_or_generate(world):
     assert volunteer.post(path + "/generate", json={"csrf": "nonempty", **expected}, headers={"Origin": "https://testserver"}).status_code == 401
     public = detail(volunteer, f"/availability/{link}")
     own = detail(volunteer, f"/availability/{link}/mine")
-    assert not any(word in str(public) + str(own) for word in ("solver_metadata", "slots", "draft_revision", "restricted_qualified"))
+    assert not any(word in str(public) + str(own) for word in ("solver_metadata", "slots", "draft_revision", "outside_available"))
 
 
 def test_availability_repair_replaces_only_unlocked_invalid_assignments(world):

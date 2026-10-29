@@ -123,7 +123,7 @@ def test_volunteer_removal_filters_counts_revokes_pin_sessions_and_restores(worl
         assert event["staff_id"] == (world.admin_id if role == "admin" else world.scheduler_id)
         assert json.loads(event["details"])["after"]["active"] == 0
         assert pin not in event["details"]
-    restore = {key: person[key] for key in ("display_name", "public_label", "restricted_qualified")}
+    restore = {key: person[key] for key in ("display_name", "public_label", "outside_available")}
     assert post(world.client, f"/staff/volunteers/{person['id']}", **restore, active=True, expected_revision=person["revision"] + 1).status_code == 200
     assert volunteer.get(f"/availability/{link}/mine").status_code == 401
     assert verify(volunteer, link, person["id"], pin).status_code == 200
@@ -195,7 +195,7 @@ def test_published_snapshot_attribution_signal_and_pdf_survive_removal_and_resto
     assert people[0]["display_name"] in signal and people[0]["display_name"] in pdf
     assert any("inactive" in p for p in review(world, day)["problems"])
     p = people[0]
-    assert post(world.client, f"/staff/volunteers/{p['id']}", display_name="Restored different name", public_label="Restored label", restricted_qualified=True, active=True, expected_revision=p["revision"] + 1).status_code == 200
+    assert post(world.client, f"/staff/volunteers/{p['id']}", display_name="Restored different name", public_label="Restored label", outside_available=True, active=True, expected_revision=p["revision"] + 1).status_code == 200
     assert post(world.client, f"/staff/users/{world.admin_id}/access", expected_epoch=2, role="admin", active=True).status_code == 200
     assert historical(world, day, version) == original
     assert world.client.get(path + "/signal.txt").text == signal and pdf_text() == pdf
@@ -254,7 +254,7 @@ def test_concurrent_duplicate_and_stale_removals_preserve_newer_updates(world, k
     if kind == "staff":
         assert post(world.client, f"/staff/users/{target}/access", expected_epoch=2, role="admin", active=True).status_code == 200
     else:
-        assert post(world.client, f"/staff/volunteers/{target}", expected_revision=2, display_name="Newer name", public_label="Newer label", active=True, restricted_qualified=True).status_code == 200
+        assert post(world.client, f"/staff/volunteers/{target}", expected_revision=2, display_name="Newer name", public_label="Newer label", active=True, outside_available=True).status_code == 200
     assert post(world.client, url, **revision, confirmed=True).status_code == 409
     with world.db.engine.connect() as c:
         assert c.exec_driver_sql(f"SELECT active FROM {table} WHERE id=?", (target,)).scalar() == 1

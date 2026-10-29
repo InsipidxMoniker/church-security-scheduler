@@ -188,6 +188,8 @@ def create_app(db=None, security=None, origin=None, clock=None):
                 back = "/".join(pieces[:3]) + ("/mine" if pieces[-1] == "mine" and problem.status != 401 else "")
             elif path.startswith("/staff/volunteers/import"):
                 back = "/staff/volunteers/import"
+            elif path == "/staff/volunteers":
+                back = "/staff/volunteers/new"
             elif path.startswith("/staff/users"):
                 back = "/staff/users"
             elif path.startswith("/staff/volunteers/") and path.endswith("/pin/view"):
@@ -233,7 +235,7 @@ def create_app(db=None, security=None, origin=None, clock=None):
             "Content-Security-Policy": "default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             "X-Content-Type-Options": "nosniff", "Strict-Transport-Security": "max-age=31536000",
         })
-        if page_request(request):
+        if page_request(request) or (request.method == "POST" and request.url.path in ("/login", "/mfa")):
             response.headers.add_vary_header("Accept")
         return response
 
@@ -273,26 +275,43 @@ def create_app(db=None, security=None, origin=None, clock=None):
     def home():
         return RedirectResponse("/staff", 303)
 
-    @app.get("/login")
-    def login_page(request: Request):
+    def login_response(request, *, status=200, message=None, username="", retry=None):
         raw = app.state.security.cipher.encrypt(token().encode()).decode()
-        response = view(request, "login.html", csrf=raw)
+        response = templates.TemplateResponse(request=request, name="login.html",
+            context={"csrf": raw, "message": message, "username": username}, status_code=status,
+            headers={"Retry-After": str(retry)} if retry else None)
         cookie(response, PREAUTH, raw, 600)
         return response
 
+    @app.get("/login")
+    def login_page(request: Request):
+        return login_response(request)
+
     @app.post("/login")
     async def login(request: Request):
-        data = await form(request, Login)
-        raw = request.cookies.get(PREAUTH, "")
+        data = None
         try:
-            app.state.security.cipher.decrypt(raw.encode(), ttl=600)
-        except InvalidToken:
-            raise Problem(403, "Refresh the sign-in page") from None
-        if not secrets.compare_digest(digest(raw), digest(data.csrf)):
-            raise Problem(403, "Invalid CSRF token")
-        # CPU-bound hashing runs in the bounded thread pool, never the event loop.
-        from starlette.concurrency import run_in_threadpool
-        pending, csrf = await run_in_threadpool(auth(request).login, data.username, data.password, client_ip(request))
+            data = await form(request, Login)
+            raw = request.cookies.get(PREAUTH, "")
+            try:
+                app.state.security.cipher.decrypt(raw.encode(), ttl=600)
+            except InvalidToken:
+                raise Problem(403, "Refresh the sign-in page") from None
+            if not secrets.compare_digest(digest(raw), digest(data.csrf)):
+                raise Problem(403, "Invalid CSRF token")
+            # CPU-bound hashing runs in the bounded thread pool, never the event loop.
+            from starlette.concurrency import run_in_threadpool
+            pending, csrf = await run_in_threadpool(auth(request).login, data.username, data.password, client_ip(request))
+        except Problem as exc:
+            if not explicit_html(request) or exc.status not in (401, 403, 422, 429):
+                raise
+            message = ("Invalid username or password. Try again." if exc.status == 401 else
+                       "Check the sign-in fields and try again." if exc.status == 422 else exc.message)
+            # Fresh preauth CSRF supports retry even after an expired form, but
+            # neither pending nor authenticated sessions are issued on failure.
+            username = data.username if data and not any(ord(ch) < 32 or ord(ch) == 127 for ch in data.username) else ""
+            return login_response(request, status=exc.status, message=message,
+                                  username=username, retry=exc.retry)
         response = JSONResponse({"next": "/mfa"}) if wants_json(request) else RedirectResponse("/mfa", 303)
         cookie(response, PENDING, pending, 600)
         cookie(response, CSRF, csrf, 600)
@@ -336,7 +355,21 @@ def create_app(db=None, security=None, origin=None, clock=None):
     async def mfa(request: Request):
         data = await form(request, MFA)
         from starlette.concurrency import run_in_threadpool
-        raw, csrf, codes = await run_in_threadpool(auth(request).mfa, request.cookies.get(PENDING), data.csrf, data.code, data.recovery, client_ip(request))
+        try:
+            raw, csrf, codes = await run_in_threadpool(auth(request).mfa, request.cookies.get(PENDING), data.csrf, data.code, data.recovery, client_ip(request))
+        except Problem as exc:
+            if not explicit_html(request) or exc.status not in (401, 429):
+                raise
+            # Revalidate the existing pending session before showing any enrollment
+            # material. Expired/revoked sessions must begin password sign-in again.
+            if exc.status == 401 and exc.message == "Sign in required":
+                return login_response(request, status=401, message="Your sign-in expired. Sign in again.")
+            enrollment_data = await run_in_threadpool(enrollment, request)
+            return templates.TemplateResponse(request=request, name="mfa.html",
+                context={"csrf": request.cookies.get(CSRF, ""), "seed": enrollment_data["seed"],
+                         "message": "Invalid verification code. Try again." if exc.status == 401 else exc.message,
+                         "recovery_error": data.recovery}, status_code=exc.status,
+                headers={"Retry-After": str(exc.retry)} if exc.retry else None)
         response = JSONResponse({"recovery_codes": codes, "next": "/staff"}) if wants_json(request) else (view(request, "recovery.html", codes=codes, csrf=csrf) if codes else RedirectResponse("/staff", 303))
         cookie(response, STAFF, raw, 28800)
         cookie(response, CSRF, csrf, 28800)

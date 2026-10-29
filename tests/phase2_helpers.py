@@ -9,7 +9,7 @@ def settings_payload(revision=1, **changes):
 
 
 def create_person(client, name="Synthetic Alex", **changes):
-    result = post(client, "/staff/volunteers", **{"display_name":name, "public_label":"", "active":True, "restricted_qualified":False, **changes})
+    result = post(client, "/staff/volunteers", **{"display_name":name, "public_label":"", "active":True, "outside_available":False, **changes})
     assert result.status_code == 200, result.text
     return result.json()
 

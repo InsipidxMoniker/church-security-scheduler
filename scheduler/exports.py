@@ -28,6 +28,13 @@ def slot_text(slot):
     return "VACANT [approved essential vacancy]" if slot["essential"] else "VACANT [optional]"
 
 
+def position_text(payload, slot):
+    # Older immutable payloads had no zone display labels; retain their exact
+    # output representation instead of consulting live settings or inventing one.
+    label = payload["config"].get(slot["zone"] + "_zone_label")
+    return str(slot["position_number"]) + (" [" + label + "]" if label else "")
+
+
 def signal_text(payload, current=True):
     lines = [f"Security schedule - Sunday {payload['local_date']}",
              f"Version {payload['publication_number']}" + (" - AMENDED" if payload["base_version_id"] else ""), payload["timezone"]]
@@ -35,7 +42,7 @@ def signal_text(payload, current=True):
         lines.append("SUPERSEDED - a newer published version exists. Confirm before sharing.")
     for service in (1, 2):
         lines += ["", payload["config"][f"service_{service}_label"] + (f" ({payload['config'][f'service_{service}_time']})" if payload["config"].get(f"service_{service}_time") else "")]
-        lines.extend(f"{s['position_number']}. {slot_text(s)}" for s in payload["slots"] if s["service_number"] == service)
+        lines.extend(f"{position_text(payload, s)}. {slot_text(s)}" for s in payload["slots"] if s["service_number"] == service)
     return "\n".join(lines)
 
 
@@ -77,8 +84,9 @@ def pdf_bytes(payload, current=True):
         if payload["config"].get(f"service_{service}_time"):
             title += " - " + payload["config"][f"service_{service}_time"]
         rows = [[paragraph("Position"), paragraph(title)]]
-        rows += [[paragraph(str(s["position_number"])), paragraph(slot_text(s))] for s in payload["slots"] if s["service_number"] == service]
-        table = Table(rows, colWidths=[60, A4[0]-132], repeatRows=1, hAlign="LEFT")
+        rows += [[paragraph(position_text(payload, s)), paragraph(slot_text(s))] for s in payload["slots"] if s["service_number"] == service]
+        position_width = 130 if "inside_zone_label" in payload["config"] else 60
+        table = Table(rows, colWidths=[position_width, A4[0]-72-position_width], repeatRows=1, hAlign="LEFT")
         table.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "TOP"), ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#e8edf2")), ("LINEBELOW", (0,0), (-1,-1), .3, colors.HexColor("#aab5c0")), ("TOPPADDING", (0,0), (-1,-1), 6), ("BOTTOMPADDING", (0,0), (-1,-1), 6)]))
         story += [table, Spacer(1, 16)]
 

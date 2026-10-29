@@ -11,7 +11,7 @@ def snapshot(count=8, qualified=4, day="2026-10-25", essential=None):
                        "service_1_time": None, "service_2_time": None,
                        "positions": [{"number": p, "zone": "outside" if p in (1, 2, 3, 8) else "inside",
                                       "restricted_required": p < 3, "essential": p in (essential if essential is not None else range(1, 9))} for p in range(1, 9)]},
-            "volunteers": [{"id": str(UUID(int=i+1)), "active": True, "restricted_qualified": i < qualified,
+            "volunteers": [{"id": str(UUID(int=i+1)), "active": True, "outside_available": i < qualified, "rifle_qualified": False,
                             "service_1_available": True, "service_2_available": True} for i in range(count)],
             "slots": [{"service_number": s, "position_number": p, "volunteer_id": None, "locked": False,
                        "slot_revision": 1, "zone": "outside" if p in (1, 2, 3, 8) else "inside",
@@ -32,7 +32,7 @@ def independent_check(data, slots):
             continue
         v = people[vid]
         assert v["active"] and v[f"service_{service}_available"] is True
-        assert position > 2 or v["restricted_qualified"]
+        assert position > 2 or v["outside_available"]
         assert (service, vid) not in services
         zone = position in (1, 2, 3, 8)
         assert (zone, vid) not in zones
@@ -50,7 +50,9 @@ def independent_score(data, slots):
         hashlib.sha256(("church-scheduler-date-tiebreak-v1|" + data["local_date"] + "|" + str(UUID(vid))).encode()).digest(), UUID(vid).bytes))
     rank = {vid: i for i, vid in enumerate(ids)}
     vector = tuple(rank.get(mapping[s, p], len(ids)) for s in (1, 2) for p in range(1, 9))
-    return (e, o, b, u), vector
+    rifle_ids = {v['id'] for v in data['volunteers'] if v['rifle_qualified']}
+    rifles = [(s['service_number'], s['position_number']) for s, vid in filled if vid in rifle_ids and s['position_number'] in (1, 2)]
+    return (e, o, len({s for s, p in rifles}), len(rifles), sum(p == 1 for s, p in rifles), b, u), vector
 
 
 def exhaustive_oracle(data):
@@ -62,7 +64,7 @@ def exhaustive_oracle(data):
         else:
             choices.append([None] + [v["id"] for v in data["volunteers"] if v["active"] and
                                    v[f"service_{s['service_number']}_available"] is True and
-                                   (s["position_number"] > 2 or v["restricted_qualified"])])
+                                   (s["position_number"] > 2 or v["outside_available"])])
     best, winner, legal = None, None, 0
     for values in itertools.product(*choices):
         slots = [{"service_number": s["service_number"], "position_number": s["position_number"], "volunteer_id": vid}

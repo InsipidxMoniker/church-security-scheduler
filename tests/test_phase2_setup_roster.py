@@ -62,24 +62,24 @@ def test_invalid_settings_no_mutation(world, change):
 @pytest.mark.parametrize("name", ["", " \t ", "A\nB", "\nName", "A\x00B", "A\x85B", "x"*101])
 def test_invalid_names(world, name):
     sign_in(world)
-    result = post(world.client, "/staff/volunteers", display_name=name, public_label="", active=True, restricted_qualified=False)
+    result = post(world.client, "/staff/volunteers", display_name=name, public_label="", active=True, outside_available=False)
     assert result.status_code == 422
 
 
 def test_duplicate_names_public_labels_unicode_and_noop(world):
     sign_in(world)
     first = create_person(world.client, "Same Name")
-    duplicate = post(world.client, "/staff/volunteers", display_name=" same name ", public_label="", active=True, restricted_qualified=False)
+    duplicate = post(world.client, "/staff/volunteers", display_name=" same name ", public_label="", active=True, outside_available=False)
     assert duplicate.status_code == 409
-    distinct = post(world.client, "/staff/volunteers", display_name="Same Name", public_label="Same Name B", active=True, restricted_qualified=True).json()
+    distinct = post(world.client, "/staff/volunteers", display_name="Same Name", public_label="Same Name B", active=True, outside_available=True).json()
     assert distinct["id"] != first["id"] and distinct["display_name"] == first["display_name"]
     street = create_person(world.client, "Straße")
-    assert post(world.client, "/staff/volunteers", display_name="STRASSE", active=True, restricted_qualified=False).status_code == 409
+    assert post(world.client, "/staff/volunteers", display_name="STRASSE", active=True, outside_available=False).status_code == 409
     assert detail(world.client, "/staff/volunteers?q=STRASSE")["volunteers"][0]["id"] == street["id"]
     rtl = create_person(world.client, "متطوع 合成 <script>")
     assert "&lt;script&gt;" in world.client.get(f"/staff/volunteers/{rtl['id']}").text
     before = detail(world.client, "/staff/settings")["roster_epoch"]
-    no_op = post(world.client, f"/staff/volunteers/{first['id']}", expected_revision=1, display_name=first["display_name"], public_label=first["public_label"], active=True, restricted_qualified=False)
+    no_op = post(world.client, f"/staff/volunteers/{first['id']}", expected_revision=1, display_name=first["display_name"], public_label=first["public_label"], active=True, outside_available=False)
     assert no_op.json()["revision"] == 1 and detail(world.client, "/staff/settings")["roster_epoch"] == before
 
 
@@ -91,9 +91,9 @@ def test_activation_deactivation_and_scheduler_rights(world):
         assert post(world.client, f"/staff/volunteers/{person['id']}/{suffix}", **data).status_code == 403
     assert world.client.get("/staff/settings").status_code == 403
     assert post(world.client, "/staff/settings", **settings_payload()).status_code == 403
-    edited = post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=1, display_name=person["display_name"], public_label="Distinct A", active=False, restricted_qualified=True).json()
+    edited = post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=1, display_name=person["display_name"], public_label="Distinct A", active=False, outside_available=True).json()
     assert edited["active"] == 0 and edited["revision"] == 2
-    assert post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=1, display_name="Lost update", active=True, restricted_qualified=False).status_code == 409
+    assert post(world.client, f"/staff/volunteers/{person['id']}", expected_revision=1, display_name="Lost update", active=True, outside_available=False).status_code == 409
     assert world.client.delete(f"/staff/volunteers/{person['id']}", headers={"Origin":"https://testserver"}).status_code == 405
 
 
@@ -186,7 +186,7 @@ def test_actual_concurrent_cas_and_idempotency(world, kind):
         if kind == "settings":
             return post(client, "/staff/settings", **settings_payload(2, timezone=["UTC","Pacific/Auckland"][index]))
         if kind == "roster":
-            return post(client, f"/staff/volunteers/{person['id']}", expected_revision=person["revision"], display_name=f"Changed {index}", public_label="", active=True, restricted_qualified=bool(index))
+            return post(client, f"/staff/volunteers/{person['id']}", expected_revision=person["revision"], display_name=f"Changed {index}", public_label="", active=True, outside_available=bool(index))
         if kind == "open":
             return post(client, "/staff/dates", local_date="2026-11-01")
         return post(client, f"/staff/dates/{day['id']}/link", expected_epoch=day["date_input_epoch"], operation="rotate")

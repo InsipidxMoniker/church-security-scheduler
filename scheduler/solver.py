@@ -46,7 +46,7 @@ def solve(data, budget=10.0, *, solver_factory=cp_model.CpSolver, clock=time.mon
     for s, p in SLOT_KEYS:
         candidates = {}
         for v in people:
-            if v["active"] and v[f"service_{s}_available"] is True and (p not in (1, 2) or v["restricted_qualified"]):
+            if v["active"] and v[f"service_{s}_available"] is True and (p not in (1, 2) or v["outside_available"]):
                 x[v["id"], s, p] = candidates[v["id"]] = model.new_bool_var(f"x_{v['id']}_{s}_{p}")
         by_slot[s, p] = candidates
         empty[s, p] = model.new_bool_var(f"vacant_{s}_{p}")
@@ -69,9 +69,20 @@ def solve(data, budget=10.0, *, solver_factory=cp_model.CpSolver, clock=time.mon
         s, p, vid = slot["service_number"], slot["position_number"], slot["volunteer_id"]
         if slot["locked"]:
             model.add((empty[s, p] if vid is None else x[vid, s, p]) == 1)
+    rifle_counts, rifle_covered = [], []
+    for s in (1, 2):
+        r = sum(x.get((v["id"], s, p), 0) for v in people if v["rifle_qualified"] for p in (1, 2))
+        covered = model.new_bool_var(f"rifle_covered_{s}")
+        model.add(covered <= r)
+        model.add(r <= 2 * covered)
+        rifle_counts.append(r)
+        rifle_covered.append(covered)
     objectives = {
         "E": sum(1 - empty[s["service_number"], s["position_number"]] for s in data["slots"] if s["essential"]),
         "O": sum(1 - empty[s["service_number"], s["position_number"]] for s in data["slots"] if not s["essential"]),
+        "RS": sum(rifle_covered),
+        "RT": sum(rifle_counts),
+        "RP1": sum(x.get((v["id"], s, 1), 0) for v in people if v["rifle_qualified"] for s in (1, 2)),
         "B": sum(both),
         "U": sum(x.get((s["volunteer_id"], s["service_number"], s["position_number"]), 0)
                  for s in data["slots"] if not s["locked"] and s["volunteer_id"] is not None),

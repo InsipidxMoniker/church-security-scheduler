@@ -36,7 +36,7 @@ def fixture_data(stack):
         assert response.status_code == 200
         return response.json()
     api("/staff/settings",expected_revision=1,timezone="America/Los_Angeles",service_1_label="First",service_2_label="Second",essentiality_confirmed=True,**{f"essential_{i}":True for i in range(1,9)})
-    person = api("/staff/volunteers",display_name="Synthetic proxy test",active=True,restricted_qualified=True)
+    person = api("/staff/volunteers",display_name="Synthetic proxy test",active=True,outside_available=True)
     pin = api(f"/staff/volunteers/{person['id']}/pin",expected_revision=person["revision"])["pin"]
     day = api("/staff/dates",local_date="2026-11-01")
     token = api(f"/staff/dates/{day['id']}/link",expected_epoch=day["date_input_epoch"],operation="create")["token"]

@@ -17,7 +17,7 @@ from cryptography.fernet import InvalidToken
 from scheduler.db import audit, row
 from scheduler.security import Problem, digest, token
 
-PUBLIC_FIELDS = "id,display_name,public_label,active,restricted_qualified,revision,(pin_hash IS NOT NULL) AS has_pin"
+STAFF_FIELDS = "id,display_name,public_label,active,outside_available,rifle_qualified,revision,(pin_hash IS NOT NULL) AS has_pin"
 CHOICES = {"first": (True, False), "second": (False, True), "both": (True, True), "neither": (False, False)}
 
 
@@ -81,6 +81,12 @@ class VolunteerFlow:
             except (ZoneInfoNotFoundError, ValueError):
                 raise Problem(422, "Choose a valid IANA timezone, such as America/Los_Angeles") from None
             labels = [label(data.service_1_label, "First service label"), label(data.service_2_label, "Second service label")]
+            if any(getattr(data, k) is None and k in data.model_fields_set for k in ("inside_zone_label", "outside_zone_label")):
+                raise Problem(422, "Zone labels must be nonblank text")
+            zones = [label(getattr(data, k) if getattr(data, k) is not None else before[k], "Zone label")
+                     for k in ("inside_zone_label", "outside_zone_label")]
+            if zones[0].casefold() == zones[1].casefold():
+                raise Problem(422, "Zone labels must be distinct (ignoring case and surrounding spaces)")
             times = [data.service_1_time or None, data.service_2_time or None]
             if any(t is not None and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", t) for t in times):
                 raise Problem(422, "Service times must be HH:MM or left blank")
@@ -92,8 +98,9 @@ class VolunteerFlow:
                 raise Problem(422, "Link lifespan exceeds the supported calendar range") from None
             essential = [getattr(data, f"essential_{i}") for i in range(1, 9)]
             config_changed = labels != [before["service_1_label"], before["service_2_label"]] or times != [before["service_1_time"], before["service_2_time"]] or essential != [bool(p["essential"]) for p in before["positions"]]
-            c.exec_driver_sql("UPDATE settings SET timezone=?,service_1_label=?,service_2_label=?,service_1_time=?,service_2_time=?,essentiality_confirmed=?,settings_revision=settings_revision+1,config_epoch=config_epoch+?,security_settings=?,updated_at=? WHERE id=1",
-                              (data.timezone, *labels, *times, int(data.essentiality_confirmed), int(config_changed), json.dumps({**before["security_settings"], "pin_digits": data.pin_digits, "link_days": data.link_days}), self.clock()))
+            config_changed = config_changed or zones != [before["inside_zone_label"], before["outside_zone_label"]]
+            c.exec_driver_sql("UPDATE settings SET timezone=?,service_1_label=?,service_2_label=?,inside_zone_label=?,outside_zone_label=?,service_1_time=?,service_2_time=?,essentiality_confirmed=?,settings_revision=settings_revision+1,config_epoch=config_epoch+?,security_settings=?,updated_at=? WHERE id=1",
+                              (data.timezone, *labels, *zones, *times, int(data.essentiality_confirmed), int(config_changed), json.dumps({**before["security_settings"], "pin_digits": data.pin_digits, "link_days": data.link_days}), self.clock()))
             for number, value in enumerate(essential, 1):
                 c.exec_driver_sql("UPDATE positions SET essential=? WHERE number=?", (int(value), number))
             after = self.settings(c)
@@ -109,11 +116,11 @@ class VolunteerFlow:
             where = "search_text LIKE ? ESCAPE '\\'" + (" AND active=?" if status != "all" else "")
             args = (search,) + ((int(status == "active"),) if status != "all" else ())
             total = c.exec_driver_sql("SELECT count(*) FROM volunteers WHERE " + where, args).scalar()
-            rows = [dict(r) for r in c.exec_driver_sql("SELECT " + PUBLIC_FIELDS + " FROM volunteers WHERE " + where + " ORDER BY normalized_label,id LIMIT ? OFFSET ?", (*args, page_size, offset)).mappings()]
+            rows = [dict(r) for r in c.exec_driver_sql("SELECT " + STAFF_FIELDS + " FROM volunteers WHERE " + where + " ORDER BY normalized_label,id LIMIT ? OFFSET ?", (*args, page_size, offset)).mappings()]
             return {"volunteers": rows, "total": total, "page": page, "page_size": page_size, "query": query, "status": status, "role": actor["role"]}
 
     def person(self, c, volunteer_id):
-        result = row(c, "SELECT " + PUBLIC_FIELDS + " FROM volunteers WHERE id=?", (volunteer_id,))
+        result = row(c, "SELECT " + STAFF_FIELDS + " FROM volunteers WHERE id=?", (volunteer_id,))
         if not result:
             raise Problem(404, "Volunteer not found")
         return result
@@ -127,20 +134,22 @@ class VolunteerFlow:
         if active and row(c, "SELECT id FROM volunteers WHERE active=1 AND normalized_label=? AND id!=?", (normalized, volunteer_id)):
             raise Problem(409, "An active volunteer already uses this public label; add a distinguishing initial or label")
 
-    def create_person(self, c, name, public_label, active, qualified):
+    def create_person(self, c, name, public_label, active, qualified, rifle=False):
+        if rifle and not qualified:
+            raise Problem(422, "Rifle Qualified requires Outside Available; clear Rifle Qualified first")
         name = label(name)
         public_label = label(public_label or name, "Public label")
         self.unique_label(c, public_label.casefold(), active)
         volunteer_id = str(uuid.uuid4())
-        c.exec_driver_sql("INSERT INTO volunteers(id,display_name,public_label,normalized_label,search_text,active,restricted_qualified) VALUES(?,?,?,?,?,?,?)",
-                          (volunteer_id, name, public_label, public_label.casefold(), (name + " " + public_label).casefold(), int(active), int(qualified)))
+        c.exec_driver_sql("INSERT INTO volunteers(id,display_name,public_label,normalized_label,search_text,active,outside_available,rifle_qualified) VALUES(?,?,?,?,?,?,?,?)",
+                          (volunteer_id, name, public_label, public_label.casefold(), (name + " " + public_label).casefold(), int(active), int(qualified), int(rifle)))
         return volunteer_id
 
     def save_person(self, raw, data, volunteer_id=None, deactivate=False):
         with self.db.transaction() as c:
             actor = self.staff(c, raw, data.csrf)
             if volunteer_id is None:
-                volunteer_id = self.create_person(c, data.display_name, data.public_label, data.active, data.restricted_qualified)
+                volunteer_id = self.create_person(c, data.display_name, data.public_label, data.active, data.outside_available, data.rifle_qualified)
                 before = None
             else:
                 before = self.person(c, volunteer_id)
@@ -151,14 +160,20 @@ class VolunteerFlow:
                         raise Problem(422, "Explicit removal confirmation required")
                     # Keep the current identity and qualifications; reuse the edit path's
                     # epoch, session revocation, approval invalidation and audit handling.
-                    data = SimpleNamespace(**{key: before[key] for key in ("display_name", "public_label", "restricted_qualified")}, active=False)
+                    data = SimpleNamespace(**{key: before[key] for key in ("display_name", "public_label", "outside_available", "rifle_qualified")}, active=False)
+                if data.rifle_qualified is None:
+                    data.rifle_qualified = bool(before["rifle_qualified"])
+                if data.rifle_qualified and not data.outside_available:
+                    raise Problem(422, "Rifle Qualified requires Outside Available; clear Rifle Qualified first")
+                if before["rifle_qualified"] and not data.outside_available:
+                    raise Problem(422, "Clear Rifle Qualified and save before removing Outside Available")
                 name = label(data.display_name)
                 public = label(data.public_label or name, "Public label")
                 self.unique_label(c, public.casefold(), data.active, volunteer_id)
-                if (name, public, data.active, data.restricted_qualified) == (before["display_name"], before["public_label"], bool(before["active"]), bool(before["restricted_qualified"])):
+                if (name, public, data.active, data.outside_available, data.rifle_qualified) == (before["display_name"], before["public_label"], bool(before["active"]), bool(before["outside_available"]), bool(before["rifle_qualified"])):
                     return before
-                c.exec_driver_sql("UPDATE volunteers SET display_name=?,public_label=?,normalized_label=?,search_text=?,active=?,restricted_qualified=?,revision=revision+1,credential_epoch=credential_epoch+?,updated_at=? WHERE id=?",
-                                  (name, public, public.casefold(), (name + " " + public).casefold(), int(data.active), int(data.restricted_qualified), int(bool(before["active"]) and not data.active), self.clock(), volunteer_id))
+                c.exec_driver_sql("UPDATE volunteers SET display_name=?,public_label=?,normalized_label=?,search_text=?,active=?,outside_available=?,rifle_qualified=?,revision=revision+1,credential_epoch=credential_epoch+?,updated_at=? WHERE id=?",
+                                  (name, public, public.casefold(), (name + " " + public).casefold(), int(data.active), int(data.outside_available), int(data.rifle_qualified), int(bool(before["active"]) and not data.active), self.clock(), volunteer_id))
                 if not data.active:
                     c.exec_driver_sql("UPDATE volunteer_sessions SET revoked_at=? WHERE volunteer_id=? AND revoked_at IS NULL", (self.clock(), volunteer_id))
             c.exec_driver_sql("UPDATE settings SET roster_epoch=roster_epoch+1 WHERE id=1")
@@ -178,16 +193,23 @@ class VolunteerFlow:
         errors, warnings, rows, seen = [], [], [], set()
         try:
             reader = csv.reader(io.StringIO(text.removeprefix("\ufeff"), newline=""), strict=True)
-            if next(reader, None) != ["display_name", "restricted_qualified"]:
-                return [], ["Header must be display_name,restricted_qualified"], []
+            header = next(reader, None)
+            legacy = header == ["display_name", "restricted_qualified"]
+            if not legacy and header != ["display_name", "outside_available", "rifle_qualified"]:
+                return [], ["Header must be display_name,outside_available,rifle_qualified (or legacy display_name,restricted_qualified)"], []
+            if legacy:
+                warnings.append("Legacy format: Restricted maps to Outside Available; Rifle Qualified defaults to false")
             existing = {r["normalized_label"] for r in c.exec_driver_sql("SELECT normalized_label FROM volunteers WHERE active=1").mappings()}
             # Bounded input size, one batched query; no per-row database queries.
             names = {r["display_name"].casefold() for r in c.exec_driver_sql("SELECT display_name FROM volunteers").mappings()}
             for fields in reader:
                 number = reader.line_num
                 try:
-                    if len(fields) != 2 or fields[1] not in ("true", "false"):
-                        raise Problem(422, "Two columns required; qualification must be true or false")
+                    if len(fields) != (2 if legacy else 3) or any(f not in ("true", "false") for f in fields[1:]):
+                        raise Problem(422, "Use the declared columns; qualifications must be true or false")
+                    rifle = not legacy and fields[2] == "true"
+                    if rifle and fields[1] != "true":
+                        raise Problem(422, "Rifle Qualified requires Outside Available")
                     name = label(fields[0])
                     normalized = name.casefold()
                     if normalized in seen or normalized in existing:
@@ -195,7 +217,7 @@ class VolunteerFlow:
                     if normalized in names:
                         warnings.append(f"Row {number}: name exists in roster; creates a new identity, never merges")
                     seen.add(normalized)
-                    rows.append({"display_name": name, "restricted_qualified": fields[1] == "true"})
+                    rows.append({"display_name": name, "outside_available": fields[1] == "true", "rifle_qualified": rifle})
                 except Problem as exc:
                     errors.append(f"Row {number}: {exc.message}")
             if not rows and not errors:
@@ -226,7 +248,7 @@ class VolunteerFlow:
             rows, errors, _ = self.csv_rows(c, saved["text"])
             if errors:
                 raise Problem(409, "CSV no longer validates; preview again")
-            ids = [self.create_person(c, r["display_name"], "", True, r["restricted_qualified"]) for r in rows]
+            ids = [self.create_person(c, r["display_name"], "", True, r["outside_available"], r["rifle_qualified"]) for r in rows]
             c.exec_driver_sql("UPDATE settings SET roster_epoch=roster_epoch+1 WHERE id=1")
             for volunteer_id in ids:
                 audit(c, "roster.imported", volunteer_id, actor=actor["id"], details={"after": self.person(c, volunteer_id)})
@@ -535,9 +557,9 @@ class VolunteerFlow:
         with self.db.transaction() as c:
             self.staff(c, raw)
             day = self.date_row(c, date_id)
-            counts = row(c, "SELECT count(*) AS active_total,sum(a.volunteer_id IS NULL) AS no_response,coalesce(sum(a.service_1_available=1 AND a.service_2_available=0),0) AS first_only,coalesce(sum(a.service_1_available=0 AND a.service_2_available=1),0) AS second_only,coalesce(sum(a.service_1_available=1 AND a.service_2_available=1),0) AS both,coalesce(sum(a.service_1_available=0 AND a.service_2_available=0),0) AS neither,coalesce(sum(a.service_1_available),0) AS first_total,coalesce(sum(a.service_2_available),0) AS second_total,coalesce(sum(a.service_1_available=1 AND v.restricted_qualified=1),0) AS first_qualified,coalesce(sum(a.service_2_available=1 AND v.restricted_qualified=1),0) AS second_qualified FROM volunteers v LEFT JOIN availability a ON a.volunteer_id=v.id AND a.date_id=? WHERE v.active=1", (date_id,))
+            counts = row(c, "SELECT count(*) AS active_total,sum(a.volunteer_id IS NULL) AS no_response,coalesce(sum(a.service_1_available=1 AND a.service_2_available=0),0) AS first_only,coalesce(sum(a.service_1_available=0 AND a.service_2_available=1),0) AS second_only,coalesce(sum(a.service_1_available=1 AND a.service_2_available=1),0) AS both,coalesce(sum(a.service_1_available=0 AND a.service_2_available=0),0) AS neither,coalesce(sum(a.service_1_available),0) AS first_total,coalesce(sum(a.service_2_available),0) AS second_total,coalesce(sum(a.service_1_available=1 AND v.outside_available=1),0) AS first_qualified,coalesce(sum(a.service_2_available=1 AND v.outside_available=1),0) AS second_qualified FROM volunteers v LEFT JOIN availability a ON a.volunteer_id=v.id AND a.date_id=? WHERE v.active=1", (date_id,))
             counts["no_response"] = counts["no_response"] or 0
-            people = [dict(r) for r in c.exec_driver_sql("SELECT v.id,v.public_label,v.restricted_qualified,a.service_1_available,a.service_2_available,coalesce(a.revision,0) AS response_revision FROM volunteers v LEFT JOIN availability a ON a.volunteer_id=v.id AND a.date_id=? WHERE v.active=1 ORDER BY v.normalized_label,v.id LIMIT 50 OFFSET ?", (date_id, offset)).mappings()]
+            people = [dict(r) for r in c.exec_driver_sql("SELECT v.id,v.public_label,v.outside_available,a.service_1_available,a.service_2_available,coalesce(a.revision,0) AS response_revision FROM volunteers v LEFT JOIN availability a ON a.volunteer_id=v.id AND a.date_id=? WHERE v.active=1 ORDER BY v.normalized_label,v.id LIMIT 50 OFFSET ?", (date_id, offset)).mappings()]
             saved_link = row(c, "SELECT l.*,s.token_ciphertext FROM date_links l LEFT JOIN date_link_secrets s ON s.link_id=l.id WHERE l.date_id=? ORDER BY l.generation DESC LIMIT 1", (date_id,))
             link_token = None
             if saved_link and saved_link["revoked_at"] is None and saved_link["token_ciphertext"]:

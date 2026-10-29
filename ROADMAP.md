@@ -1,5 +1,7 @@
 # Church Security Scheduler — Development Roadmap
 
+**Current version:** v1.0.3
+
 **Baseline:** v1.0.0 (initial private, self-hosted MVP)  
 **Status:** Proposed roadmap; not an implementation specification or an approval to change existing scheduling rules  
 **Maintainer intent:** Small, focused releases that preserve the established volunteer scheduling and publication safeguards
@@ -31,7 +33,7 @@ Versions and sequencing are **proposals**, not deadlines or authorized feature c
 **Classification:** Patch release; no scheduling-engine changes.  
 **Goal:** Replace confusing raw browser responses with navigable, authenticated user experiences and make MFA setup easier.
 
-**Implementation status:** Implemented locally on `codex/v1.0.1-auth-health` for owner review; not committed, merged, tagged or released. The owner subsequently authorized updating the local test deployment to v1.0.1; production remains unchanged. The changes cover only A–C below. v1.1.0 and all later milestones remain proposed and unimplemented. The reviewed design below is retained as the implementation rationale, with current validation recorded at the end of that section.
+**Implementation status:** Completed in v1.0.1. The changes cover A–C below. v1.1.0 and all later milestones remain proposed and unimplemented. The reviewed design below is retained as the implementation rationale, with current validation recorded at the end of that section.
 
 ### A. Redirect unauthenticated browser navigation to sign-in
 
@@ -82,7 +84,7 @@ Versions and sequencing are **proposals**, not deadlines or authorized feature c
 
 ### v1.0.0 code review and v1.0.1 implementation plan
 
-**Review baseline:** `main` commit `8685890`, locally tagged `Release-v1.0.0---Initial-MVP`. Development branch: `codex/v1.0.1-auth-health`, created from that commit. The owner subsequently authorized implementation of this v1.0.1 scope. This document does not authorize any later feature or deployment.
+**Review baseline:** `main` commit `8685890`, locally tagged `Release-v1.0.0---Initial-MVP`. Development branch: `codex/v1.0.1-auth-health`, created from that commit. The owner subsequently authorized implementation of this v1.0.1 scope. This review describes the v1.0.0 baseline at that time.
 
 #### Findings against the implemented baseline
 
@@ -100,7 +102,7 @@ Versions and sequencing are **proposals**, not deadlines or authorized feature c
 
 No contradiction was found between the roadmap's stated hard-rule safeguards and v1.0.0. The following later-release dependencies need explicit attention before those releases are approved; they are not v1.0.1 work:
 
-- **Preferences:** adding an objective affects more than the CP-SAT expression. `solver.py`, worker snapshots, `generation.py` independent validation (which currently requires completed stages `E/O/B/U`), diagnostic/proof metadata, staleness epochs and solver-oracle tests must agree. More lexicographic stages share the existing ten-second budget and need measurement. The roadmap correctly leaves placement relative to `U` undecided. `B` counts actual double-service assignments, not simply people who said they were available for both.
+- **Preferences:** adding an objective affects more than the CP-SAT expression. `solver.py`, worker snapshots, `generation.py` independent validation (which then required completed stages `E/O/B/U`), diagnostic/proof metadata, staleness epochs and solver-oracle tests must agree. More lexicographic stages share the existing ten-second budget and need measurement. The roadmap correctly leaves placement relative to `U` undecided. `B` counts actual double-service assignments, not simply people who said they were available for both.
 - **Locks/rotation:** the promise to return a legal schedule assumes legal locked inputs. Generation currently rejects same-zone double-service locks even when a manual rotation exception was approved; preferences must not turn that refusal into an implicit waiver. Retain the existing `LOCK_CONFLICT` behavior unless separately approved.
 - **History/fairness:** amendments create multiple immutable publications for one Sunday. Define which version counts and use stable volunteer IDs to avoid counting all superseded versions or grouping by display name. There is no attendance/completion/acceptance tracking, so those proposed fairness bases require additional data and decisions first.
 - **Communications:** there is no delivery integration or recipient-contact/consent model. Channel support, credentials, recipient identity, delivery persistence/idempotency and revocation behavior must precede automation. Keep publication atomicity independent of external delivery availability and retain manual exports.
@@ -146,13 +148,15 @@ For the redirect allowlist use matched page-route patterns, not every `/staff` p
 
 7. **Prepare patch documentation and review.** Update README route/QR/health instructions, CHANGELOG and consistent application/Compose/browser-image version references to 1.0.1 as part of the implemented patch, not this plan. No schema, key, PIN or account recreation should be needed; document the absence of migrations. Review the eventual diff to ensure no scheduling-engine changes or v1.1+ fields slipped in. Obtain owner authorization before changing an existing test deployment; a real authenticator scan is a manual acceptance step requiring the owner's participation or a disposable test authenticator. Retain secure synthetic first-enrollment, manual-entry and reset coverage. Leave merging, tagging, publication and live deployment for explicit approval.
 
-**Implementation notes:** `wants_json()` and authentication/solver services are unchanged. Health uses one underlying collector; default JSON retains all five fields and its existing error statuses (500 for a schema-check RuntimeError, 503 for operational database failure), while explicit HTML presents a sanitized 503 page. QR SVGs are generated in memory with ReportLab; browser-only `zxing-cpp==3.1.1` independently decodes Firefox-rendered pixels, including escaped labels and a 100-character Unicode label. The hash-pinned browser lock passed pip-audit 2.10.1 with no known findings; this does not prove native decoder code is vulnerability-free. No runtime dependency, environment, schema, key, PIN, proxy configuration or scheduling change is required. Container/app version labels and the authorized local test deployment are now 1.0.1; production remains unchanged. The local upgrade verified an online database backup, protected key/CA/configuration archive, unchanged business-record/key/CA fingerprints, database integrity/publication hashes, HTTPS readiness and HTML-versus-JSON authorization behavior.
+**Implementation notes:** `wants_json()` and authentication/solver services are unchanged. Health uses one underlying collector; default JSON retains all five fields and its existing error statuses (500 for a schema-check RuntimeError, 503 for operational database failure), while explicit HTML presents a sanitized 503 page. QR SVGs are generated in memory with ReportLab; browser-only `zxing-cpp==3.1.1` independently decodes Firefox-rendered pixels, including escaped labels and a 100-character Unicode label. The hash-pinned browser lock passed pip-audit 2.10.1 with no known findings; this does not prove native decoder code is vulnerability-free. No runtime dependency, environment, schema, key, PIN, proxy configuration or scheduling change was required for v1.0.1. The v1.0.1 validation used matching container and application version labels. The local upgrade verified an online database backup, protected key/CA/configuration archive, unchanged business-record/key/CA fingerprints, database integrity/publication hashes, HTTPS readiness and HTML-versus-JSON authorization behavior.
 
 **Validation:** the complete application suite passed **460 tests**, preserving the original 398 and adding 62 targeted regressions. The complete browser/proxy suite passed **25 tests**, preserving the original 20 and adding five. Total: **485 passed, zero failed/skipped**. Compose configuration, app/proxy/browser builds and `git diff --check` passed. Test-only decoder audit found no known advisories; the runtime image has no decoder and the Caddy executable hash is unchanged. Manual acceptance still includes scanning a disposable enrollment QR with the owner's real authenticator and the unchanged operational checks in README. No claim is made that a real phone/authenticator, Debian deployment, Tunnel path or PBS recovery was exercised by these isolated tests.
 
 ---
 
 ## v1.1.0 — Service-specific inside/outside preferences and UI modernization
+
+**Approved v1.0.3 amendment:** The owner explicitly selected v1.0.3 for configurable zone display labels, Outside Available/Rifle Qualified and `E > O > RS > RT > RP1 > B > U > canonical tie-break`. See [the feature amendment](docs/v1.0.3-qualification-zones.md); this is an exception to the normal minor-feature version policy. It does not implement or authorize the volunteer preferences below. Their proposed objective insertion points predate RS/RT/RP1 and require a fresh explicit decision against the seven-stage sequence before implementation. Merge, push, release and deployment remain separately controlled.
 
 **Classification:** Minor feature release. Adding preference data and incorporating it into CP-SAT is a deliberate feature and objective change, not merely a cosmetic v1.0.x fix.
 
@@ -264,7 +268,7 @@ These were intentionally outside v1.0.0 and should be added only in response to 
 
 ## Recommended Codex implementation workflow
 
-1. **For v1.0.1:** Review the locally implemented three fixes, actual regression results and remaining manual authenticator acceptance on the development branch from `main`. Commit/merge/release/deployment remain owner-controlled actions requiring explicit authorization. Do not implement later roadmap items as part of this patch.
+1. **Completed v1.0.x work:** See CHANGELOG and README for the delivered features, validation results and remaining operational acceptance checks.
 2. **Before v1.1.0 preferences:** Present the five explicit policy/design choices above for owner approval. Then implement preferences as an independently testable migration + UI + solver change, followed by UI modernization in a separate reviewed workstream.
 3. **For each later minor release:** Confirm business decisions first; maintain isolated development branches; demonstrate preserved hard constraints and concurrency/security invariants; benchmark relevant algorithm changes; provide migration and rollback limitations; run relevant automated and manual acceptance checks.
 4. **For every release:** Codex may prepare changes and test reports but must not merge, force-push, tag, create GitHub Releases, modify PBS, or deploy to the live Debian VM without explicit instruction.

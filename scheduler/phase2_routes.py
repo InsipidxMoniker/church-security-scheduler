@@ -20,6 +20,8 @@ class SettingsForm(Form):
     timezone: str = Field(min_length=1, max_length=100)
     service_1_label: str = Field(min_length=1, max_length=100)
     service_2_label: str = Field(min_length=1, max_length=100)
+    inside_zone_label: str | None = Field(default=None, max_length=100)
+    outside_zone_label: str | None = Field(default=None, max_length=100)
     service_1_time: str | None = Field(default=None, max_length=5)
     service_2_time: str | None = Field(default=None, max_length=5)
     essential_1: bool
@@ -39,11 +41,14 @@ class PersonForm(Form):
     display_name: str = Field(min_length=1, max_length=200)
     public_label: str = Field(default="", max_length=200)
     active: bool
-    restricted_qualified: bool
+    outside_available: bool = False
+    rifle_qualified: bool = False
 
 
 class PersonEdit(PersonForm):
     expected_revision: int = Field(ge=1)
+    outside_available: bool
+    rifle_qualified: bool | None = None
 
 
 class Revision(Form):
