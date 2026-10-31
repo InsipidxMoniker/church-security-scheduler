@@ -5,6 +5,8 @@ Version: 1.2, October 23, 2026
 Status: maintained business-rule and acceptance reference for v1.0.0, subject to release validation below.
 Supersedes v1.0/v1.1 and completed implementation plans/reviews. Operational procedures are maintained in [README](../README.md).
 
+This is the original v1.0.0 contract, not a description of every current feature. Approved later changes, including the current solver objectives and qualification model, are documented in the [v1.0.3 amendment](v1.0.3-qualification-zones.md); the [changelog](../CHANGELOG.md) records subsequent releases. Section 19 records the separately approved credential-display decision. Unmet acceptance checks remain requirements, not evidence of completion.
+
 Normative language: MUST is required for MVP; MAY is optional. Explicit technical defaults below resolve implementation choices, not new church staffing policies. Where this document clarifies or supersedes v1.0/v1.1, use this document. This contract is not test evidence. Release-review results must identify executed checks and remaining gates separately.
 
 ## 1. Product and boundaries

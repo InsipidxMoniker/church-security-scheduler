@@ -5,11 +5,11 @@
 - Remove configured zone labels from published detail pages, Signal-ready text and PDF exports for current, historical and amended publications. Preserve position numbers, volunteer names, service labels/times, dates, version indicators, vacancies and approval/exception markers.
 - Keep zone labels in staff drafts, configuration and internal scheduling. Stored publication payloads/hashes, assignments, schema, solver, qualifications and authorization are unchanged. No migration or configuration change is required.
 - Restore the PDF position column to its number-only width and share the number-only position formatter between distribution exports.
-- Validation: **568 application + 35 browser/proxy tests passed (603 total; zero failures/skips)**. App/proxy/browser images built; local Compose app/proxy run v1.0.4 with schema 0006. All four existing local publications rendered without labels in HTML/Signal/PDF inside the running app container; all database table fingerprints, encryption key and CA certificate were preserved. Internal draft template labels were verified with live configuration (no stored local draft); automated tests cover actual draft pages. No production connection, migration or release action was performed.
+- Validation: **568 application + 35 browser/proxy tests passed (603 total; zero failures/skips)**. App/proxy/browser images built; local Compose app/proxy run v1.0.4 with schema 0006. All four existing local publications rendered without labels in HTML/Signal/PDF inside the running app container; all database table fingerprints, encryption key and CA certificate were preserved. Internal draft template labels were verified with live configuration (no stored local draft); automated tests cover actual draft pages. These were local checks; production was not accessed or migrated.
 
 ## v1.0.3 — Zone Labels and Rifle Qualification
 
-- Add Administrator-configurable Inside/Outside display labels with validation, settings concurrency/audit, draft configuration epochs and explicit refresh/diff. Fixed position mapping, rotation identities and existing date timezones remain unchanged. Capture labels in new publication payloads; historical payloads and their output representation remain intact.
+- Add Administrator-configurable Inside/Outside display labels with validation, settings concurrency/audit, draft configuration epochs and explicit refresh/diff. Fixed position mapping, rotation identities and existing date timezones remain unchanged. Capture labels in new publication payloads; historical payloads remain intact. The later v1.0.4 release changes their presentation.
 - Rename Restricted to Outside Available without changing eligibility: only Positions 1/2 require it. Add Rifle Qualified as a database/API-enforced subset. Both staff roles may edit; clear and save Rifle Qualified before removing Outside Available. Qualification edits retain roster epochs/audit, hard-conflict repair and stale-request rejection; rifle-only edits mark earlier optimization inputs outdated without invalidating legal assignments.
 - Optimize lexicographically **E > O > RS > RT > RP1 > B > U > original Sunday-specific canonical tie-break**. Distribute rifle assignments across services before maximizing their total at Positions 1/2, then prefer rifles at Position 1. Extend independent scoring, proof metadata validation and staff diagnostics. Retain the single ten-second solve budget, isolated worker and concurrency gate; no new hard rifle requirement or publication approval. Earlier six-stage results remain historical until explicit regeneration.
 - Render incorrect browser login credentials inline on the styled login page with generic wording, escaped username, empty password and fresh preauth CSRF. Invalid MFA/recovery codes remain on the MFA form with empty code fields; a valid existing pending session is required. Explicit HTML only: retain JSON/API error contracts, status codes, CSRF/provenance, throttles/Retry-After and session/MFA security. Add desktop/mobile Firefox retries and authentication/security regression coverage.
@@ -36,36 +36,7 @@
 - Add independent QR decoding and authentication/health browser regressions. No schema, runtime dependency, environment, scheduling, Caddy or encryption-key changes; rebuild containers to update.
 - Validated 460 application and 25 browser/proxy tests (485 total, zero failures/skips), complete container builds, Compose configuration and the browser-only decoder dependency audit. Real authenticator/manual acceptance remains pending; no production deployment was performed.
 
-### Upgrade from v1.0.0
-
-Keep the existing checkout path, Compose project, `.env`, database/key volumes and Caddy CA volumes. This patch requires **no database migration, environment changes, key generation, administrator recreation or PIN reset**. Stop on any command failure; never use `docker compose down -v`.
-
-For a released deployment, first record the previous commit/image IDs and secure the original key/configuration under the existing backup process. Use a clean checkout:
-
-```sh
-git status --short
-git fetch origin --tags
-git switch --detach v1.0.1
-```
-
-Build before restarting. Replace `YYYYMMDDTHHMMSS` with a unique timestamp in both backup commands; the backup tool refuses to overwrite an existing file:
-
-```sh
-docker compose config --quiet
-docker compose build app proxy
-docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.1-YYYYMMDDTHHMMSS.sqlite
-docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.1-YYYYMMDDTHHMMSS.sqlite
-docker compose up -d --wait --wait-timeout 90 app proxy
-docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-docker compose ps
-docker compose logs --tail 30 app proxy
-```
-
-Check CA-verified `/health/ready` using the configured hostname, then visit `/` in a signed-out browser and confirm it reaches `/login`. Sign in with existing credentials and check **System health**: browser HTML should show version 1.0.1; authenticated requests with `Accept: application/json` retain the JSON interface. Application backup events describe application-managed copies, not PBS jobs.
-
-The enrollment QR appears only during first enrollment or authorized re-enrollment, not normal MFA sign-in. To test it without resetting an established account, create a disposable staff account through **Manage staff**, sign in as that account in a separate browser context, scan the QR (or enter its manual secret), and verify recovery-code presentation. Deactivate that test account afterward. No test account is created automatically by an upgrade.
-
-For this unchanged schema, the recorded v1.0.0 code/images remain compatible with existing data if rollback is needed. Preserve failed-state evidence and the recovery backup; follow the [README upgrade and rollback guidance](README.md#updates-and-rollback-limits). Do not restore over a running database or replace the original key.
+Upgrade procedures are maintained in the [README](README.md#updates-and-rollback-limits).
 
 ## v1.0.0 — Initial release
 
@@ -81,6 +52,6 @@ For this unchanged schema, the recorded v1.0.0 code/images remain compatible wit
 - Rebuilt upstream Caddy v2.11.7 with digest-pinned Go 1.27.3 and locked x/net v0.60.0, resolving CVE-2026-78669, CVE-2026-78667, CVE-2026-97031 and CVE-2026-111943 in the inspected runtime binary. Final proxy scan: no critical/high or Alpine findings; two non-applicable module matches documented in README.
 - Validated 398 application and 20 browser/proxy tests, including verified TLS/HTTP2, forwarding restrictions and redirects; checked empty/IPv4/IPv6 trust configuration and existing internal CA reuse. Documented proxy-only redeployment and existing PBS recovery responsibilities.
 
-Known limits: one app worker/host, no automatic messaging or public schedules, no multi-date/fairness optimization or downgrade/unpublish. HTML swaps accept one new rotation approval; general multi-slot/multiple-approval edits use JSON. Signal copying is manual; bundled font coverage needs actual-label review. FEASIBLE results have unfinished proof/canonicalization. Dedicated Debian performance, production Tunnel/TLS and encrypted off-host recovery/replacement-host restore require operator validation before release. This entry does not claim those checks have passed.
+Known limits: one app worker/host, no automatic messaging or public schedules, no multi-date/fairness optimization or downgrade/unpublish. HTML swaps accept one new rotation approval; general multi-slot/multiple-approval edits use JSON. Signal copying is manual; bundled font coverage needs actual-label review. FEASIBLE results have unfinished proof/canonicalization. Dedicated Debian performance, production Tunnel/TLS and encrypted off-host recovery/replacement-host restore require operator validation before production use. This entry does not claim those checks have passed.
 
 The Caddy security blocker is resolved locally. See README for remaining nonblocking dependency findings and unperformed operational acceptance checks; PBS remains the selected VM backup infrastructure.

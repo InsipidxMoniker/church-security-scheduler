@@ -1,6 +1,8 @@
 # Church Security Scheduler
 
-Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current version: **v1.0.4**. Production acceptance items below remain independently tracked. See [release history](CHANGELOG.md), [roadmap](ROADMAP.md), the [v1.0.0 business rules and acceptance contract](docs/church_security_scheduler_mvp_spec_v1.2.md) and the [approved v1.0.3 feature amendment](docs/v1.0.3-qualification-zones.md).
+Self-hosted Sunday volunteer scheduling for a specific church, maintained in a **private GitHub repository**. Current version: **v1.0.4**. Production acceptance items below remain independently tracked.
+
+This guide covers installation, operation, recovery and development. See the [release history](CHANGELOG.md), [future roadmap](ROADMAP.md), [v1.2 MVP specification for the v1.0.0 baseline](docs/church_security_scheduler_mvp_spec_v1.2.md), and [approved v1.0.3 feature amendment](docs/v1.0.3-qualification-zones.md) for changes to that baseline. The v1.0.4 publication presentation change is recorded in the changelog.
 
 ## Features and boundaries
 
@@ -228,39 +230,21 @@ This presentation-only patch requires no migration, configuration changes or cre
 Record previous image/commit IDs and take a uniquely named verified backup before switching to the v1.0.4 release. Preserve the Compose project, volumes, original key and Caddy certificates. Rebuild and restart using the existing checkout:
 
 ```sh
-docker compose config --quiet
-docker compose build app proxy
+git status --short
 docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.4-YYYYMMDDTHHMMSS.sqlite
 docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.4-YYYYMMDDTHHMMSS.sqlite
+git fetch origin --tags
+git switch --detach v1.0.4
+docker compose config --quiet
+docker compose build app proxy
 docker compose up -d --wait --wait-timeout 90 app proxy
 ```
 
 Verify health version 1.0.4, a published page, Signal/PDF exports and internal draft labels. Do not regenerate, republish or refresh drafts as part of this upgrade. No database migration command is needed. Never reset volumes or run `down -v`.
 
-v1.0.4 validation: **568 application + 35 browser/proxy tests passed (603 total, zero failures/skips)**. Local Docker is running v1.0.4 with preserved data/key/CA and verified HTTPS readiness. Actual stored publications passed read-only HTML/Signal/PDF rendering checks inside the running app container; internal draft labels remain present. See [patch notes and verification details](docs/v1.0.4-publication-display.md).
+Historical local validation and its limits are recorded in the [changelog](CHANGELOG.md#v104--hide-zone-labels-in-finalized-schedules).
 
 Deploy reviewed tags, preserving checkout path, Compose project, `.env`, volumes and original key. Default volume names start `church-security-scheduler_`; changing projects creates different volumes and can look like lost data. Never bootstrap/init-key for upgrades.
-
-### v1.0.1 to v1.0.2
-
-**v1.0.2 - Staff and Volunteer Removal.** No schema migration, new dependency, environment change, PIN reset or credential recreation is required; schema head remains `0005_publication_guards`. The solver and proxy configuration are unchanged. Application, proxy and browser image labels advance to 1.0.2.
-
-Record the previous commit/images and use a clean deployment checkout. Stop on failure, keep the existing Compose project/volumes/key and choose unique backup filenames:
-
-```sh
-git status --short
-git fetch origin --tags
-git switch --detach v1.0.2
-docker compose config --quiet
-docker compose build app proxy
-docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.2-YYYYMMDDTHHMMSS.sqlite
-docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.2-YYYYMMDDTHHMMSS.sqlite
-docker compose up -d --wait --wait-timeout 90 app proxy
-docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-docker compose ps
-```
-
-Check CA-verified readiness and health version 1.0.2, then use disposable identities to verify removal, sign-in/PIN denial, Inactive filtering and restoration. Check a draft conflict and an existing publication/export before accepting the update. This checkout does not deploy automatically. Recorded v1.0.1 images remain schema-compatible for rollback; deactivated status and revoked sessions persist in the database. Keep the backup and original key; do not restore over a running database.
 
 ### v1.0.2 to v1.0.3
 
@@ -295,6 +279,27 @@ Verify CA-validated readiness and authenticated health (`1.0.3`, `0006_qualifica
 
 On failure keep public traffic stopped and preserve the failed state and original backup. **Do not run previous images against schema 0006 or attempt an Alembic downgrade.** To roll back, use the recorded previous code/image and verified pre-migration backup plus original key/config in a clean isolated destination through the matching previous release's quarantined restore procedure below. To recover into v1.0.3, migrate an offline copy of the old backup before current-head verification/restore; preserve the original. Both upgrade preservation and the offline-copy/current restore path are covered by automated tests. Restore revokes sessions/links and closes collection; post-backup changes are lost. Never overwrite a live destination, reset a database/key, delete WAL/SHM, or use `down -v`.
 
+### v1.0.1 to v1.0.2
+
+**v1.0.2 - Staff and Volunteer Removal.** No schema migration, new dependency, environment change, PIN reset or credential recreation is required; schema head remains `0005_publication_guards`. The solver and proxy configuration are unchanged. Application, proxy and browser image labels advance to 1.0.2.
+
+Record the previous commit/images and use a clean deployment checkout. Stop on failure, keep the existing Compose project/volumes/key and choose unique backup filenames:
+
+```sh
+git status --short
+git fetch origin --tags
+git switch --detach v1.0.2---Staff-and-Volunteer-Removal
+docker compose config --quiet
+docker compose build app proxy
+docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.2-YYYYMMDDTHHMMSS.sqlite
+docker compose --profile tools run --rm -T operator verify-backup --source /backups/pre-v1.0.2-YYYYMMDDTHHMMSS.sqlite
+docker compose up -d --wait --wait-timeout 90 app proxy
+docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose ps
+```
+
+Check CA-verified readiness and health version 1.0.2, then use disposable identities to verify removal, sign-in/PIN denial, Inactive filtering and restoration. Check a draft conflict and an existing publication/export before accepting the update. This checkout does not deploy automatically. Recorded v1.0.1 images remain schema-compatible for rollback; deactivated status and revoked sessions persist in the database. Keep the backup and original key; do not restore over a running database.
+
 ### v1.0.0 to v1.0.1
 
 This patch needs container rebuild/recreation, **no migration**, no environment changes and no new runtime dependencies. Schema remains `0005_publication_guards`; retain the original key, accounts, PINs, sessions and Caddy volumes. Caddy source/build/configuration is unchanged; its local image label follows the application release. The independent QR decoder is installed only in the browser test image.
@@ -304,7 +309,7 @@ Run on Debian/sh from the existing deployment checkout, stopping on failure. Cho
 ```sh
 git status --short
 git fetch origin --tags
-git switch --detach v1.0.1
+git switch --detach Release-v1.0.1---Redirects,-MFA-QR,-Health-Page
 docker compose config --quiet
 docker compose build app proxy
 docker compose --profile tools run --rm -T operator backup --destination /backups/pre-v1.0.1-YYYYMMDDTHHMMSS.sqlite
@@ -315,17 +320,17 @@ docker compose ps
 curl --fail --cacert recovery/caddy-root.crt https://localhost:8443/health/ready
 ```
 
-Use the configured site hostname/port or direct-origin `--resolve` for remote deployments. Verify existing staff MFA, browser redirects, health HTML/JSON, and a disposable account's QR/manual enrollment before accepting the update. Production deployment requires owner approval. With this unchanged schema, recorded v1.0.0 code/images remain compatible with the same data if an application rollback is needed; retain the recovery backup and follow the general rollback limits below.
+Use the configured site hostname/port or direct-origin `--resolve` for remote deployments. Verify existing staff MFA, browser redirects, health HTML/JSON, and a disposable account's QR/manual enrollment before accepting the update. Deactivate the disposable account afterward. Production deployment requires owner approval. With this unchanged schema, recorded v1.0.0 code/images remain compatible with the same data if an application rollback is needed; retain the recovery backup and follow the general rollback limits below.
 
 ### General updates that include migrations
 
 1. Confirm clean checkout, record previous tag/commit, and take verified backup plus protected off-host key/config copy below. For legacy schema, use the old matching release's tool or supported SQLite API; this verifier requires its own head.
-2. Fetch/build before downtime (replace tag for later releases):
+2. Fetch/build before downtime (replace the tag with the reviewed target release):
 
    ```sh
    git status --short
    git fetch origin --tags
-   git switch --detach v1.0.1
+   git switch --detach v1.0.4
    docker compose config --quiet
    docker compose build app proxy
    ```
@@ -357,8 +362,8 @@ After checking out the reviewed release on Debian, keep the same project, `.env`
 ```sh
 docker compose config --quiet
 docker compose build proxy
-docker run --rm --network none --entrypoint caddy church-security-scheduler-proxy:1.0.1 build-info
-docker run --rm --network none --entrypoint sha256sum church-security-scheduler-proxy:1.0.1 /usr/bin/caddy
+docker run --rm --network none --entrypoint caddy church-security-scheduler-proxy:1.0.4 build-info
+docker run --rm --network none --entrypoint sha256sum church-security-scheduler-proxy:1.0.4 /usr/bin/caddy
 docker compose up -d --no-deps --force-recreate proxy
 docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker compose exec -T proxy sha256sum /usr/bin/caddy
@@ -455,19 +460,7 @@ git diff --check
 
 Tests mount no deployment data/key volumes; app fixtures migrate temporary on-disk SQLite. Browser tests run real HTTPS Caddy/Uvicorn/Firefox with disposable CA/key/DB. HTTP integration validates CA; isolated Firefox context bypasses its disposable CA only. Coverage includes independent solver oracle/canonical vectors, generated constraints, stale/competing operations, auth/PIN/CSRF/roles, subprocess failure, approval integrity, persistence/restore/wrong-key, proxy spoofing and throttle separation. Warnings are errors except two named library deprecations. Artifacts belong in ignored `test-results/`, not permanent phase reports.
 
-October 24 Caddy remediation validation: **398 application + 20 browser/proxy tests passed (418 total; zero failures/skips)**. The browser suite includes a CA-verified HTTP/2 request and HTTP redirect check. Caddy configuration also passed with trust empty, one IPv4 `/32` and one IPv6 `/128` in disposable hardened containers; Compose configuration passed. These checks do not exercise the production LXC/NAT path.
-
-v1.0.1 implementation validation: **460 application + 25 browser/proxy tests passed (485 total; zero failures/skips)**. This preserves the baseline and adds page/API negotiation, session/role boundaries, QR enrollment/reset isolation, health/error/backup-state coverage, independent decoding of Firefox-rendered QR pixels at desktop/mobile widths (including escaped and long Unicode labels), and keyboard navigation. Browser-only `zxing-cpp==3.1.1` is hash-pinned; pip-audit 2.10.1 reported no known findings in the browser lock. No new runtime dependency is installed. The local test deployment was subsequently updated on owner request, with CA-verified startup/redirect checks and preserved data/key/CA fingerprints. A real authenticator scan/manual staff acceptance and the existing Debian/Tunnel/PBS operational checks remain owner tasks; no production deployment was performed.
-
-v1.0.2 implementation validation: **478 application + 31 browser/proxy tests passed (509 total; zero failures/skips)**. Eighteen new application cases cover removal/restoration, staff/PIN session revocation, permissions/provenance/CSRF, stale and concurrent requests, audit rollback, draft conflicts/locked repair, future generation and immutable publication/Signal/PDF history. Six Firefox cases exercise desktop/mobile confirmation, cancellation, keyboard submission, stale feedback, filters and restoration for both authorized roles. Application, proxy and browser images built successfully; Compose configuration and whitespace checks passed. Validation used disposable data; no services were deployed or restarted. Manual staff acceptance and the existing production operational gates remain separate.
-
-Initial v1.0.3 qualification/zone validation (before RP1/login refinements): **523 application tests passed in 188.62 s + 33 browser/proxy tests passed in 88.16 s (556 total; zero failures/skips)**. The populated upgrade/current restore and strengthened interrupted-migration schema rollback tests also passed separately (2 tests in 0.95 s). Forty-five new application cases and two desktop/mobile Firefox cases cover qualification dependencies, new/legacy CSV, private views/exports, label validation/authorization/snapshots, independent six-stage oracle and proof injection, stale commits, migration preservation/rollback and scale. Existing tests retain their invariants with renamed fields/version/vector assertions. An initial failed-migration test exposed exception-path pool cleanup; `migrations/env.py` now always disposes its engine, without suppressing warnings. All three v1.0.3 images built; Compose validation and `git diff --check` passed. No deployment service/volume or production backup was changed.
-
-The initial six-stage saved bounded scale run used **2 CPUs/768 MiB**, 100 volunteers/five Sundays, 20 normal generations and 100 operations from 20 volunteer/two staff sessions during a deliberately stale solve. All six objective proofs completed in 20/20; canonicalization completed in 19/20. Maximum request was 10.559 s, ordinary p95 0.238 s, RS+RT stage mean 0.024 s. The one canonical timeout returned FEASIBLE after six proven objectives, preserving the ten-second budget. These TestClient/real-worker measurements do not replace dedicated Debian/TLS/RSS acceptance. See the [feature amendment](docs/v1.0.3-qualification-zones.md#validation-evidence) for exact scope, raw artifact location, reproduction and remaining gates.
-
-Final combined v1.0.3 validation after RP1/login refinements: **567 application tests passed in 189.75 s + 35 browser/proxy tests passed in 95.50 s (602 total; zero failures/skips)**. Forty-four additional application cases and two desktop/mobile Firefox cases cover RP1, seven-stage proof/independent validation, historical six-stage results, unknown/inactive users, wrong passwords, MFA/recovery errors, CSRF expiry/retry, JSON/HTML negotiation, escaping, throttles and session boundaries. Separate test images built successfully; Compose and whitespace checks passed. Version is **1.0.3** and schema is **0006**. The local Docker testing deployment was subsequently updated and its backup, data preservation, HTTPS readiness and targeted smoke tests were verified.
-
-The RP1 bounded rerun also passed (1 test in 35.94 s): **20/20 seven-stage proofs, 19/20 canonicalizations**, maximum request 10.534 s, ordinary p95 0.298 s for 100 successful operations. The RP1 solve stage averaged 0.012 s (maximum 0.020 s). One canonical search exhausted the unchanged total deadline after all seven objective proofs and returned FEASIBLE correctly. Raw measurements are retained separately in ignored `test-results/v103-refinements-benchmark.json`; the initial six-stage artifact is preserved. This remains a local TestClient/worker benchmark, not production Debian/TLS/RSS acceptance.
+Historical test counts and local validation results are recorded by version in the [changelog](CHANGELOG.md). The [v1.0.3 amendment](docs/v1.0.3-qualification-zones.md#validation-evidence) retains benchmark scope, reproduction and limitations. These historical results do not establish current production acceptance.
 
 Maintain locks with disposable Python 3.13, compatible pip 25.2/pip-tools 7.5.3. Preserve pins unless deliberately upgrading; regenerate hashes and rerun both suites:
 
